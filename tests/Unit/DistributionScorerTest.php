@@ -15,14 +15,17 @@ class DistributionScorerTest extends TestCase
     use RefreshDatabase;
 
     protected DistributionScorer $scorer;
+
     protected Protokol $dewi;
+
     protected Protokol $andi;
+
     protected JenisKegiatan $jenis;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->scorer = new DistributionScorer();
+        $this->scorer = new DistributionScorer;
 
         $this->dewi = Protokol::create([
             'name' => 'Dewi Kurnia',

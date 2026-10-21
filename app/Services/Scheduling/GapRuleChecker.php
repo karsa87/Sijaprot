@@ -8,7 +8,6 @@ use App\Models\Kegiatan;
 use App\Models\Penugasan;
 use App\Models\Protokol;
 use Carbon\Carbon;
-use Illuminate\Database\Eloquent\Builder;
 
 class GapRuleChecker
 {
@@ -25,12 +24,12 @@ class GapRuleChecker
         }
 
         // 2. Hard Rule H1: Cek Gap Waktu Hybrid (24 Jam Dalam Kota / H+1 Luar Kota)
-        if (!$this->passesHybridGap($protokol, $kegiatan, $relaxLuarKotaGap)) {
+        if (! $this->passesHybridGap($protokol, $kegiatan, $relaxLuarKotaGap)) {
             return false;
         }
 
         // 3. Hard Rule H3: Cek Proteksi Full Weekend (Sabtu/Minggu sebelumnya)
-        if (!$this->passesWeekendProtection($protokol, $kegiatan)) {
+        if (! $this->passesWeekendProtection($protokol, $kegiatan)) {
             return false;
         }
 
@@ -42,13 +41,13 @@ class GapRuleChecker
      */
     public function hasDirectOverlap(Protokol $protokol, Kegiatan $kegiatan): bool
     {
-        return Penugasan::where('protokol_id', $protokol->id)
-            ->whereHas('kegiatan', function (Builder $q) use ($kegiatan) {
-                $q->where('id', '!=', $kegiatan->id ?? 0)
-                  ->where('status', '!=', 'cancelled')
-                  ->where('start_datetime', '<', $kegiatan->end_datetime)
-                  ->where('end_datetime', '>', $kegiatan->start_datetime);
-            })
+        return Penugasan::where('penugasan.protokol_id', $protokol->id)
+            ->join('kegiatan', 'penugasan.kegiatan_id', '=', 'kegiatan.id')
+            ->whereNull('kegiatan.deleted_at')
+            ->where('kegiatan.id', '!=', $kegiatan->id ?? 0)
+            ->where('kegiatan.status', '!=', 'cancelled')
+            ->where('kegiatan.start_datetime', '<', $kegiatan->end_datetime)
+            ->where('kegiatan.end_datetime', '>', $kegiatan->start_datetime)
             ->exists();
     }
 
@@ -64,22 +63,24 @@ class GapRuleChecker
         $newEnd = Carbon::parse($kegiatan->end_datetime);
 
         // A. Cek Kegiatan Terakhir SEBELUM kegiatan baru (Backward Gap)
-        $previousTask = Penugasan::where('protokol_id', $protokol->id)
-            ->whereHas('kegiatan', function (Builder $q) use ($newStart, $kegiatan) {
-                $q->where('id', '!=', $kegiatan->id ?? 0)
-                  ->where('status', '!=', 'cancelled')
-                  ->where('end_datetime', '<=', $newStart)
-                  ->where('end_datetime', '>=', (clone $newStart)->subDays(7)); // Boundary 7 hari (Index hit)
-            })
+        // BUG-02 Fix: Mengurutkan kegiatan.end_datetime DESC (bukan assigned_at) dengan boundary 7 hari untuk 200M data
+        $previousTask = Penugasan::where('penugasan.protokol_id', $protokol->id)
+            ->join('kegiatan', 'penugasan.kegiatan_id', '=', 'kegiatan.id')
+            ->whereNull('kegiatan.deleted_at')
+            ->where('kegiatan.id', '!=', $kegiatan->id ?? 0)
+            ->where('kegiatan.status', '!=', 'cancelled')
+            ->where('kegiatan.end_datetime', '<=', $newStart)
+            ->where('kegiatan.end_datetime', '>=', (clone $newStart)->subDays(7))
+            ->orderBy('kegiatan.end_datetime', 'desc')
+            ->select('penugasan.*')
             ->with(['kegiatan:id,location_type,start_datetime,end_datetime'])
-            ->latest('assigned_at')
             ->first();
 
         if ($previousTask && $previousTask->kegiatan) {
             $prevKegiatan = $previousTask->kegiatan;
             $prevEnd = Carbon::parse($prevKegiatan->end_datetime);
 
-            if ($prevKegiatan->location_type === LocationType::LUAR_KOTA && !$relaxLuarKota) {
+            if ($prevKegiatan->location_type === LocationType::LUAR_KOTA && ! $relaxLuarKota) {
                 // Luar Kota: Hari kepulangan + 1 hari kalender penuh diblokir (Baru boleh H+2)
                 $earliestAvailableDate = (clone $prevEnd)->startOfDay()->addDays(2);
                 if ($newStart->lt($earliestAvailableDate)) {
@@ -95,21 +96,23 @@ class GapRuleChecker
         }
 
         // B. Cek Kegiatan Berikutnya SETELAH kegiatan baru (Forward Gap)
-        $nextTask = Penugasan::where('protokol_id', $protokol->id)
-            ->whereHas('kegiatan', function (Builder $q) use ($newEnd, $kegiatan) {
-                $q->where('id', '!=', $kegiatan->id ?? 0)
-                  ->where('status', '!=', 'cancelled')
-                  ->where('start_datetime', '>=', $newEnd)
-                  ->where('start_datetime', '<=', (clone $newEnd)->addDays(7)); // Boundary 7 hari
-            })
+        // BUG-02 Fix: Mengurutkan kegiatan.start_datetime ASC (bukan assigned_at)
+        $nextTask = Penugasan::where('penugasan.protokol_id', $protokol->id)
+            ->join('kegiatan', 'penugasan.kegiatan_id', '=', 'kegiatan.id')
+            ->whereNull('kegiatan.deleted_at')
+            ->where('kegiatan.id', '!=', $kegiatan->id ?? 0)
+            ->where('kegiatan.status', '!=', 'cancelled')
+            ->where('kegiatan.start_datetime', '>=', $newEnd)
+            ->where('kegiatan.start_datetime', '<=', (clone $newEnd)->addDays(7))
+            ->orderBy('kegiatan.start_datetime', 'asc')
+            ->select('penugasan.*')
             ->with(['kegiatan:id,location_type,start_datetime,end_datetime'])
-            ->oldest('assigned_at')
             ->first();
 
         if ($nextTask && $nextTask->kegiatan) {
             $nextStart = Carbon::parse($nextTask->kegiatan->start_datetime);
 
-            if ($kegiatan->location_type === LocationType::LUAR_KOTA && !$relaxLuarKota) {
+            if ($kegiatan->location_type === LocationType::LUAR_KOTA && ! $relaxLuarKota) {
                 $earliestNextAllowedDate = (clone $newEnd)->startOfDay()->addDays(2);
                 if ($nextStart->lt($earliestNextAllowedDate)) {
                     return false;
@@ -135,23 +138,27 @@ class GapRuleChecker
         $targetDate = Carbon::parse($kegiatan->start_datetime);
         $isOffday = $kegiatan->is_weekend || $kegiatan->is_holiday || $targetDate->isWeekend() || HariLibur::isHoliday($targetDate);
 
-        if (!$isOffday) {
+        if (! $isOffday) {
             return true; // Hari kerja biasa bebas dari aturan H3
         }
 
         // Hitung rentang akhir pekan sebelumnya (Sabtu & Minggu pekan lalu)
-        // Contoh: Target Sabtu 11 Okt -> Prev weekend: Sabtu 4 Okt s.d. Minggu 5 Okt
-        $prevSaturday = (clone $targetDate)->subDays(7)->startOfWeek(Carbon::SATURDAY)->startOfDay();
+        // BUG-06 Fix: Untuk hari libur di hari kerja (Senin - Jumat), ambil Sabtu yang persis mendahuluinya
+        if ($targetDate->isWeekend()) {
+            $prevSaturday = (clone $targetDate)->subDays(7)->startOfWeek(Carbon::SATURDAY)->startOfDay();
+        } else {
+            $prevSaturday = (clone $targetDate)->previous(Carbon::SATURDAY)->startOfDay();
+        }
         $prevSunday = (clone $prevSaturday)->addDay()->endOfDay();
 
-        $workedPrevWeekend = Penugasan::where('protokol_id', $protokol->id)
-            ->whereHas('kegiatan', function (Builder $q) use ($prevSaturday, $prevSunday, $kegiatan) {
-                $q->where('id', '!=', $kegiatan->id ?? 0)
-                  ->where('status', '!=', 'cancelled')
-                  ->whereBetween('start_datetime', [$prevSaturday, $prevSunday]);
-            })
+        $workedPrevWeekend = Penugasan::where('penugasan.protokol_id', $protokol->id)
+            ->join('kegiatan', 'penugasan.kegiatan_id', '=', 'kegiatan.id')
+            ->whereNull('kegiatan.deleted_at')
+            ->where('kegiatan.id', '!=', $kegiatan->id ?? 0)
+            ->where('kegiatan.status', '!=', 'cancelled')
+            ->whereBetween('kegiatan.start_datetime', [$prevSaturday, $prevSunday])
             ->exists();
 
-        return !$workedPrevWeekend;
+        return ! $workedPrevWeekend;
     }
 }

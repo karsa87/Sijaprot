@@ -9,7 +9,13 @@ use Livewire\Component;
 class RekapDistribusi extends Component
 {
     public int $selectedMonth;
+
     public int $selectedYear;
+
+    public function boot(): void
+    {
+        abort_unless(auth()->user()?->can('manage-master'), 403, 'Akses ditolak. Anda tidak memiliki izin untuk melihat laporan distribusi.');
+    }
 
     public function mount(): void
     {

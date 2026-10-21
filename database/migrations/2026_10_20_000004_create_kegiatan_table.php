@@ -29,10 +29,10 @@ return new class extends Migration
             // High-Performance Composite Indexes (Built for 200M rows)
             // 1. Calendar monthly queries & overlap window lookups
             $table->index(['start_datetime', 'end_datetime', 'status'], 'idx_kegiatan_range_status');
-            
+
             // 2. Status filtration with temporal ordering
             $table->index(['status', 'start_datetime'], 'idx_kegiatan_status_start');
-            
+
             // 3. Category distribution analysis
             $table->index(['jenis_kegiatan_id', 'start_datetime'], 'idx_kegiatan_jenis_start');
         });

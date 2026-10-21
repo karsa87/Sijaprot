@@ -16,6 +16,7 @@ class ProcessAutoSchedulingJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public Kegiatan $kegiatan;
+
     public ?int $assignedByUserId;
 
     /**

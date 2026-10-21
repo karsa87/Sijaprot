@@ -151,4 +151,20 @@ class MasterProtokolLivewireTest extends TestCase
             'name' => 'Bambang Sudirman',
         ]);
     }
+
+    /**
+     * BUG-08: Sanitasi nomor WhatsApp harus memvalidasi format nomor ponsel Indonesia.
+     */
+    public function test_cannot_input_invalid_whatsapp_phone_number(): void
+    {
+        $this->withoutVite();
+        $this->actingAs($this->admin);
+
+        Livewire::test(DaftarProtokol::class)
+            ->call('openCreateModal')
+            ->set('name', 'Budi Teks Bebas')
+            ->set('phone_wa', 'HUBUNGI KASUBBAG') // String teks bebas
+            ->call('saveProtokol')
+            ->assertHasErrors(['phone_wa']);
+    }
 }

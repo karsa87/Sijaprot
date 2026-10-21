@@ -30,10 +30,10 @@ return new class extends Migration
             // High-Performance Composite Indexes (Built for 200M rows)
             // 1. Finding a protocol's last assigned task instantly for gap checking
             $table->index(['protokol_id', 'assigned_at'], 'idx_penugasan_proto_assigned');
-            
+
             // 2. Joining directly from kegiatan to assigned protocols
             $table->index(['kegiatan_id'], 'idx_penugasan_kegiatan');
-            
+
             // 3. Fast audit lookup for manual overrides
             $table->index(['is_override', 'assigned_at'], 'idx_penugasan_override_time');
         });

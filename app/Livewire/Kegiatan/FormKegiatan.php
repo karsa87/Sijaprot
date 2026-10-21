@@ -4,15 +4,13 @@ namespace App\Livewire\Kegiatan;
 
 use App\Enums\KegiatanStatus;
 use App\Enums\LocationType;
-use App\Enums\PaymentDayType;
-use App\Enums\PaymentType;
 use App\Models\HariLibur;
 use App\Models\JenisKegiatan;
 use App\Models\Kegiatan;
 use App\Models\Protokol;
+use App\Services\Scheduling\GapRuleChecker;
 use App\Services\Scheduling\SchedulingEngine;
 use Carbon\Carbon;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Component;
 
@@ -20,49 +18,75 @@ class FormKegiatan extends Component
 {
     // Mode State
     public bool $isEditing = false;
+
     public ?int $kegiatanId = null;
+
     public bool $showDeleteModal = false;
 
     // Form Input Properties
     public string $title = '';
+
     public ?int $jenis_kegiatan_id = null;
+
     public int $jumlah_protokol = 2;
+
     public string $start_date = '';
+
     public string $start_time = '08:30';
+
     public string $end_date = '';
+
     public string $end_time = '12:00';
+
     public string $detail = '';
 
     // Auto-detected Indicators
     public string $detectedHari = 'Hari Kerja';
+
     public string $detectedFee = 'Dibayar (Hari Kerja)';
+
     public string $detectedLokasi = 'Dalam Kota';
+
     public bool $isWeekend = false;
+
     public bool $isHoliday = false;
 
     // Simulation & Engine Output
     public bool $hasRunSimulation = false;
+
     public array $recommendations = [];
+
     public string $relaxationLevel = 'strict';
+
     public ?string $relaxationWarning = null;
+
     public int $totalEligible = 0;
 
     // Manual Override & Swap State
     public bool $showOverridePanel = false;
+
     public ?int $overrideOldProtoId = null;
+
     public ?int $overrideNewProtoId = null;
+
     public string $overrideReason = '';
 
     // Modal Ganti Personil (Direct Swap)
     public bool $showSwapModal = false;
+
     public ?int $swapOldProtoId = null;
+
     public string $swapOldProtoName = '';
+
     public ?int $swapNewProtoId = null;
+
     public string $swapReason = '';
 
     // Modal Tambah Personil Manual
     public bool $showAddManualModal = false;
+
     public ?int $manualProtoId = null;
+
     public string $manualReason = 'Dipilih secara manual oleh Admin';
 
     protected function rules(): array
@@ -73,7 +97,21 @@ class FormKegiatan extends Component
             'jumlah_protokol' => 'required|integer|min:1|max:10',
             'start_date' => 'required|date',
             'start_time' => 'required|date_format:H:i',
-            'end_date' => 'required|date|after_or_equal:start_date',
+            'end_date' => [
+                'required',
+                'date',
+                'after_or_equal:start_date',
+                // BUG-03: Mencegah waktu selesai lebih awal atau sama dengan waktu mulai (durasi minus / nol)
+                function ($attribute, $value, $fail) {
+                    if ($this->start_date && $this->start_time && $this->end_time) {
+                        $start = Carbon::parse("{$this->start_date} {$this->start_time}");
+                        $end = Carbon::parse("{$value} {$this->end_time}");
+                        if ($end->lte($start)) {
+                            $fail('Waktu selesai kegiatan harus lebih akhir dari waktu mulai kegiatan.');
+                        }
+                    }
+                },
+            ],
             'end_time' => 'required|date_format:H:i',
             'detail' => 'nullable|string|max:1000',
         ];
@@ -110,7 +148,7 @@ class FormKegiatan extends Component
             $this->hasRunSimulation = true;
             $this->totalEligible = count($existingRecs);
 
-            if (!empty($existingRecs)) {
+            if (! empty($existingRecs)) {
                 $this->overrideOldProtoId = $existingRecs[0]['protokol']['id'];
             }
 
@@ -140,30 +178,60 @@ class FormKegiatan extends Component
         $this->updateAutoDetection();
     }
 
+    public function updatedEndDate(): void
+    {
+        $this->updateAutoDetection();
+    }
+
     public function updateAutoDetection(bool $preserveRecs = false): void
     {
         if (empty($this->start_date)) {
             return;
         }
 
-        $dt = Carbon::parse($this->start_date);
-        $this->isWeekend = $dt->isWeekend();
-        $this->isHoliday = HariLibur::isHoliday($dt);
+        $start = Carbon::parse($this->start_date);
+        $end = Carbon::parse($this->end_date ?? $this->start_date);
+
+        if ($end->lt($start)) {
+            $end = $start->copy();
+        }
+
+        // BUG-05: Pindai seluruh rentang tanggal untuk mendeteksi weekend / hari libur lintas hari
+        $hasWeekend = false;
+        $hasHoliday = false;
+        $holidayName = null;
+
+        $curr = $start->copy();
+        while ($curr->lte($end)) {
+            if ($curr->isWeekend()) {
+                $hasWeekend = true;
+            }
+            if (HariLibur::isHoliday($curr)) {
+                $hasHoliday = true;
+                if (! $holidayName) {
+                    $holiday = HariLibur::whereDate('tanggal', $curr->toDateString())->first();
+                    $holidayName = $holiday->name ?? 'Hari Libur Nasional';
+                }
+            }
+            $curr->addDay();
+        }
+
+        $this->isWeekend = $hasWeekend;
+        $this->isHoliday = $hasHoliday;
 
         // Kategori Hari
         if ($this->isHoliday) {
-            $holiday = HariLibur::whereDate('tanggal', $dt->toDateString())->first();
-            $this->detectedHari = 'Libur: ' . ($holiday->name ?? 'Hari Libur Nasional');
+            $this->detectedHari = 'Libur: '.($holidayName ?? 'Hari Libur Nasional');
         } elseif ($this->isWeekend) {
-            $this->detectedHari = $dt->dayName . ' (Weekend)';
+            $this->detectedHari = $start->isSameDay($end) ? $start->dayName.' (Weekend)' : 'Rentang Akhir Pekan (Weekend)';
         } else {
-            $this->detectedHari = $dt->dayName . ' (Hari Kerja)';
+            $this->detectedHari = $start->isSameDay($end) ? $start->dayName.' (Hari Kerja)' : 'Hari Kerja Biasa';
         }
 
         // Tipe Fee & Lokasi berdasarkan Template
         $jenis = JenisKegiatan::find($this->jenis_kegiatan_id);
         if ($jenis) {
-            if (!$jenis->isPaid()) {
+            if (! $jenis->isPaid()) {
                 $this->detectedFee = 'Tidak Dibayar (Rutin)';
             } elseif ($this->isWeekend || $this->isHoliday) {
                 $this->detectedFee = 'Dibayar (Luar Hari Kerja)';
@@ -175,21 +243,23 @@ class FormKegiatan extends Component
         }
 
         // Reset simulasi jika bukan mode edit atau preserveRecs false
-        if (!$preserveRecs && !$this->isEditing) {
+        if (! $preserveRecs && ! $this->isEditing) {
             $this->hasRunSimulation = false;
             $this->recommendations = [];
         }
     }
 
-    public function runAutoSchedulerSimulation(SchedulingEngine $engine): void
+    /**
+     * Helper reusable untuk merakit instance Kegiatan in-memory dari input form saat ini.
+     */
+    protected function buildTemporaryKegiatan(): Kegiatan
     {
-        $this->validate();
-
+        $jenis = JenisKegiatan::find($this->jenis_kegiatan_id);
         $startDateTime = "{$this->start_date} {$this->start_time}:00";
         $endDateTime = "{$this->end_date} {$this->end_time}:00";
 
-        // Buat instance transient untuk evaluasi algoritma
-        $tempKegiatan = new Kegiatan([
+        return new Kegiatan([
+            'id' => $this->isEditing ? $this->kegiatanId : null,
             'jenis_kegiatan_id' => $this->jenis_kegiatan_id,
             'title' => $this->title,
             'detail' => $this->detail,
@@ -198,9 +268,16 @@ class FormKegiatan extends Component
             'jumlah_protokol' => $this->jumlah_protokol,
             'is_weekend' => $this->isWeekend,
             'is_holiday' => $this->isHoliday,
-            'location_type' => JenisKegiatan::find($this->jenis_kegiatan_id)?->location_type->value ?? 'dalam_kota',
+            'location_type' => $jenis?->location_type->value ?? LocationType::DALAM_KOTA->value,
             'status' => KegiatanStatus::DRAFT->value,
         ]);
+    }
+
+    public function runAutoSchedulerSimulation(SchedulingEngine $engine): void
+    {
+        $this->validate();
+
+        $tempKegiatan = $this->buildTemporaryKegiatan();
 
         $output = $engine->generateRecommendation($tempKegiatan);
 
@@ -217,7 +294,7 @@ class FormKegiatan extends Component
         session()->flash('info', 'Simulasi algoritma selesai. Rekomendasi siap ditinjau.');
     }
 
-    public function applyManualOverride(): void
+    public function applyManualOverride(GapRuleChecker $gapChecker): void
     {
         $this->validate([
             'overrideOldProtoId' => 'required|exists:protokols,id',
@@ -226,6 +303,13 @@ class FormKegiatan extends Component
         ]);
 
         $newProto = Protokol::find($this->overrideNewProtoId);
+        $tempKegiatan = $this->buildTemporaryKegiatan();
+
+        if (! $gapChecker->passesAllHardRules($newProto, $tempKegiatan)) {
+            $this->addError('overrideNewProtoId', "Pegawai {$newProto->name} tidak memenuhi Hard Rules (mengalami bentrok jadwal atau jeda istirahat kurang).");
+
+            return;
+        }
 
         // Update list rekomendasi in-memory
         foreach ($this->recommendations as $index => $rec) {
@@ -253,7 +337,7 @@ class FormKegiatan extends Component
         $this->showSwapModal = true;
     }
 
-    public function applySwapProtocol(): void
+    public function applySwapProtocol(GapRuleChecker $gapChecker): void
     {
         $this->validate([
             'swapOldProtoId' => 'required|exists:protokols,id',
@@ -262,6 +346,14 @@ class FormKegiatan extends Component
         ]);
 
         $newProto = Protokol::findOrFail($this->swapNewProtoId);
+        $tempKegiatan = $this->buildTemporaryKegiatan();
+
+        // BUG-01 Fix: Validasi seluruh Hard Rules (H1, H2, H3) sebelum membolehkan swap
+        if (! $gapChecker->passesAllHardRules($newProto, $tempKegiatan)) {
+            $this->addError('swapNewProtoId', "Pegawai {$newProto->name} tidak memenuhi Hard Rules (mengalami bentrok jadwal atau jeda istirahat kurang).");
+
+            return;
+        }
 
         // Update susunan penugasan in-memory
         foreach ($this->recommendations as $index => $rec) {
@@ -303,7 +395,7 @@ class FormKegiatan extends Component
         $this->showAddManualModal = true;
     }
 
-    public function addManualProtocol(): void
+    public function addManualProtocol(GapRuleChecker $gapChecker): void
     {
         $this->validate([
             'manualProtoId' => 'required|exists:protokols,id',
@@ -313,10 +405,19 @@ class FormKegiatan extends Component
         $existingIds = collect($this->recommendations)->pluck('protokol.id')->toArray();
         if (in_array($this->manualProtoId, $existingIds)) {
             $this->addError('manualProtoId', 'Personil ini sudah ada dalam susunan tugas kegiatan.');
+
             return;
         }
 
         $proto = Protokol::findOrFail($this->manualProtoId);
+        $tempKegiatan = $this->buildTemporaryKegiatan();
+
+        // BUG-01 Fix: Validasi seluruh Hard Rules (H1, H2, H3) sebelum penambahan manual
+        if (! $gapChecker->passesAllHardRules($proto, $tempKegiatan)) {
+            $this->addError('manualProtoId', "Pegawai {$proto->name} tidak memenuhi Hard Rules (mengalami bentrok jadwal atau jeda istirahat kurang).");
+
+            return;
+        }
 
         $this->recommendations[] = [
             'protokol' => $proto->toArray(),
@@ -360,7 +461,7 @@ class FormKegiatan extends Component
             ]);
 
             $chosenIds = null;
-            if (!empty($this->recommendations)) {
+            if (! empty($this->recommendations)) {
                 $chosenIds = collect($this->recommendations)->pluck('protokol.id')->toArray();
                 // Hapus penugasan untuk protokol yang tidak lagi terpilih
                 $kegiatan->penugasan()->whereNotIn('protokol_id', $chosenIds)->delete();
@@ -386,7 +487,7 @@ class FormKegiatan extends Component
 
             // Simpan penugasan ke database
             $chosenIds = null;
-            if (!empty($this->recommendations)) {
+            if (! empty($this->recommendations)) {
                 $chosenIds = collect($this->recommendations)->pluck('protokol.id')->toArray();
             }
 
@@ -405,7 +506,7 @@ class FormKegiatan extends Component
 
     public function deleteKegiatan()
     {
-        if (!$this->kegiatanId) {
+        if (! $this->kegiatanId) {
             return;
         }
 
@@ -433,13 +534,13 @@ class FormKegiatan extends Component
         // Personil yang tersedia untuk ditukar (mengecualikan yang sudah terpilih, kecuali yang sedang diganti)
         $excludedForSwap = array_diff($selectedIds, [$this->swapOldProtoId ?? 0]);
         $availableProtokolsForSwap = Protokol::active()
-            ->when(!empty($excludedForSwap), fn ($q) => $q->whereNotIn('id', $excludedForSwap))
+            ->when(! empty($excludedForSwap), fn ($q) => $q->whereNotIn('id', $excludedForSwap))
             ->orderBy('name')
             ->get();
 
         // Personil yang tersedia untuk ditambahkan manual (mengecualikan semua yang sudah ada di list)
         $availableProtokolsForAdd = Protokol::active()
-            ->when(!empty($selectedIds), fn ($q) => $q->whereNotIn('id', $selectedIds))
+            ->when(! empty($selectedIds), fn ($q) => $q->whereNotIn('id', $selectedIds))
             ->orderBy('name')
             ->get();
 

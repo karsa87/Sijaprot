@@ -28,7 +28,7 @@ class AuditOverrideLog extends Model
 
     public function kegiatan(): BelongsTo
     {
-        return $this->belongsTo(Kegiatan::class, 'kegiatan_id');
+        return $this->belongsTo(Kegiatan::class, 'kegiatan_id')->withTrashed();
     }
 
     public function previousProtokol(): BelongsTo

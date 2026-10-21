@@ -22,7 +22,9 @@ class KalenderMonitoringLivewireTest extends TestCase
     use RefreshDatabase;
 
     protected User $admin;
+
     protected Protokol $dewi;
+
     protected JenisKegiatan $jenis;
 
     protected function setUp(): void
@@ -132,7 +134,7 @@ class KalenderMonitoringLivewireTest extends TestCase
             ->call('deleteKegiatan')
             ->assertSet('showDeleteModal', false);
 
-        $this->assertDatabaseMissing('kegiatan', ['id' => $kegiatan->id]);
+        $this->assertSoftDeleted('kegiatan', ['id' => $kegiatan->id]);
         $this->assertDatabaseMissing('penugasan', ['kegiatan_id' => $kegiatan->id]);
     }
 }

@@ -94,55 +94,55 @@ class Protokol extends Model
             'penugasan as total_tugas_bulan_ini' => function (Builder $q) use ($month, $year) {
                 $q->whereHas('kegiatan', function (Builder $kq) use ($month, $year) {
                     $kq->whereMonth('start_datetime', $month)
-                       ->whereYear('start_datetime', $year)
-                       ->where('status', '!=', 'cancelled');
+                        ->whereYear('start_datetime', $year)
+                        ->where('status', '!=', 'cancelled');
                 });
             },
             // Paid workday tasks
             'penugasan as tugas_dibayar_workday' => function (Builder $q) use ($month, $year) {
                 $q->whereHas('kegiatan', function (Builder $kq) use ($month, $year) {
                     $kq->whereMonth('start_datetime', $month)
-                       ->whereYear('start_datetime', $year)
-                       ->where('status', '!=', 'cancelled')
-                       ->where('is_weekend', false)
-                       ->where('is_holiday', false)
-                       ->whereHas('jenisKegiatan', function (Builder $jq) {
-                           $jq->where('payment_type', 'paid');
-                       });
+                        ->whereYear('start_datetime', $year)
+                        ->where('status', '!=', 'cancelled')
+                        ->where('is_weekend', false)
+                        ->where('is_holiday', false)
+                        ->whereHas('jenisKegiatan', function (Builder $jq) {
+                            $jq->where('payment_type', 'paid');
+                        });
                 });
             },
             // Paid weekend/holiday tasks
             'penugasan as tugas_dibayar_offday' => function (Builder $q) use ($month, $year) {
                 $q->whereHas('kegiatan', function (Builder $kq) use ($month, $year) {
                     $kq->whereMonth('start_datetime', $month)
-                       ->whereYear('start_datetime', $year)
-                       ->where('status', '!=', 'cancelled')
-                       ->where(function (Builder $wq) {
-                           $wq->where('is_weekend', true)->orWhere('is_holiday', true);
-                       })
-                       ->whereHas('jenisKegiatan', function (Builder $jq) {
-                           $jq->where('payment_type', 'paid');
-                       });
+                        ->whereYear('start_datetime', $year)
+                        ->where('status', '!=', 'cancelled')
+                        ->where(function (Builder $wq) {
+                            $wq->where('is_weekend', true)->orWhere('is_holiday', true);
+                        })
+                        ->whereHas('jenisKegiatan', function (Builder $jq) {
+                            $jq->where('payment_type', 'paid');
+                        });
                 });
             },
             // Unpaid tasks
             'penugasan as tugas_unpaid' => function (Builder $q) use ($month, $year) {
                 $q->whereHas('kegiatan', function (Builder $kq) use ($month, $year) {
                     $kq->whereMonth('start_datetime', $month)
-                       ->whereYear('start_datetime', $year)
-                       ->where('status', '!=', 'cancelled')
-                       ->whereHas('jenisKegiatan', function (Builder $jq) {
-                           $jq->where('payment_type', 'unpaid');
-                       });
+                        ->whereYear('start_datetime', $year)
+                        ->where('status', '!=', 'cancelled')
+                        ->whereHas('jenisKegiatan', function (Builder $jq) {
+                            $jq->where('payment_type', 'unpaid');
+                        });
                 });
             },
             // Luar kota trip count
             'penugasan as trip_luar_kota' => function (Builder $q) use ($month, $year) {
                 $q->whereHas('kegiatan', function (Builder $kq) use ($month, $year) {
                     $kq->whereMonth('start_datetime', $month)
-                       ->whereYear('start_datetime', $year)
-                       ->where('status', '!=', 'cancelled')
-                       ->where('location_type', 'luar_kota');
+                        ->whereYear('start_datetime', $year)
+                        ->where('status', '!=', 'cancelled')
+                        ->where('location_type', 'luar_kota');
                 });
             },
         ]);

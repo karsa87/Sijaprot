@@ -15,41 +15,70 @@ class DaftarProtokol extends Component
     use WithPagination;
 
     public string $search = '';
+
     public string $statusFilter = 'all';
+
     public int $selectedMonth;
+
     public int $selectedYear;
 
     // State Modal Form (Tambah/Edit)
     public bool $showFormModal = false;
+
     public bool $isEditing = false;
+
     public ?int $protokolId = null;
+
     public string $name = '';
+
     public string $phone_wa = '';
+
     public string $nip = '';
+
     public string $status = 'active';
+
     public string $notes = '';
 
     // State Modal Statistik Individu
     public bool $showStatsModal = false;
+
     public ?Protokol $statProtokol = null;
+
     public array $statBreakdown = [];
+
     public array $statHistory = [];
 
     // State Modal Konfirmasi Hapus
     public bool $showDeleteModal = false;
+
     public ?int $deletingProtokolId = null;
+
     public string $deletingProtokolName = '';
+
     public int $deletingProtokolTaskCount = 0;
 
     protected function rules(): array
     {
         return [
             'name' => 'required|string|min:3|max:255',
-            'phone_wa' => 'required|string|min:8|max:25',
+            // BUG-08: Format nomor WhatsApp harus berupa nomor ponsel Indonesia yang valid
+            'phone_wa' => ['required', 'string', 'regex:/^(\+62|62|0)8[0-9\-\s]{6,16}$/'],
             'nip' => ['nullable', 'string', 'max:30', Rule::unique('protokols', 'nip')->ignore($this->protokolId)],
             'status' => 'required|in:active,inactive',
             'notes' => 'nullable|string|max:500',
         ];
+    }
+
+    protected function messages(): array
+    {
+        return [
+            'phone_wa.regex' => 'Format nomor WhatsApp tidak valid. Gunakan format nomor ponsel Indonesia (contoh: 081234567890 atau +6281234567890).',
+        ];
+    }
+
+    public function boot(): void
+    {
+        abort_unless(auth()->user()?->can('manage-master'), 403, 'Akses ditolak. Anda tidak memiliki izin untuk mengelola master data.');
     }
 
     public function mount(): void
@@ -151,7 +180,7 @@ class DaftarProtokol extends Component
 
     public function deleteProtokol(): void
     {
-        if (!$this->deletingProtokolId) {
+        if (! $this->deletingProtokolId) {
             return;
         }
 

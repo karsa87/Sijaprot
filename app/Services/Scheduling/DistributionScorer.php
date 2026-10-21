@@ -28,8 +28,8 @@ class DistributionScorer
         $metrics = Penugasan::whereIn('protokol_id', $protoIds)
             ->whereHas('kegiatan', function ($q) use ($month, $year) {
                 $q->whereMonth('start_datetime', $month)
-                  ->whereYear('start_datetime', $year)
-                  ->where('status', '!=', 'cancelled');
+                    ->whereYear('start_datetime', $year)
+                    ->where('status', '!=', 'cancelled');
             })
             ->with(['kegiatan.jenisKegiatan'])
             ->get();
@@ -86,7 +86,7 @@ class DistributionScorer
         $lastAssignment = Penugasan::where('protokol_id', $protokol->id)
             ->whereHas('kegiatan', function ($q) use ($targetDate) {
                 $q->where('start_datetime', '<', $targetDate)
-                  ->where('status', '!=', 'cancelled');
+                    ->where('status', '!=', 'cancelled');
             })
             ->with(['kegiatan:id,start_datetime'])
             ->latest('assigned_at')
@@ -143,7 +143,7 @@ class DistributionScorer
             $reasons[] = "Jeda istirahat {$daysSinceLastTask} hari";
         }
 
-        $reasonText = implode('. ', $reasons) . '.';
+        $reasonText = implode('. ', $reasons).'.';
 
         return [
             'score' => $finalScore,

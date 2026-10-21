@@ -2,10 +2,6 @@
 
 namespace App\Livewire\Master;
 
-use App\Enums\LiburType;
-use App\Enums\LocationType;
-use App\Enums\PaymentDayType;
-use App\Enums\PaymentType;
 use App\Models\HariLibur;
 use App\Models\JenisKegiatan;
 use Carbon\Carbon;
@@ -19,21 +15,38 @@ class MasterReferensi extends Component
 
     // State Modal Jenis Kegiatan
     public bool $showJenisModal = false;
+
     public ?int $jenisId = null;
+
     public string $jenisName = '';
+
     public string $jenisCode = '';
+
     public string $jenisPaymentType = 'paid';
+
     public ?string $jenisPaymentDayType = 'workday';
+
     public string $jenisLocationType = 'dalam_kota';
+
     public float $jenisEstimatedFee = 0.00;
+
     public string $jenisDescription = '';
 
     // State Modal Hari Libur
     public bool $showLiburModal = false;
+
     public ?int $liburId = null;
+
     public string $liburTanggal = '';
+
     public string $liburName = '';
+
     public string $liburType = 'nasional';
+
+    public function boot(): void
+    {
+        abort_unless(auth()->user()?->can('manage-master'), 403, 'Akses ditolak. Anda tidak memiliki izin untuk mengelola master referensi.');
+    }
 
     public function mount(): void
     {
@@ -76,7 +89,8 @@ class MasterReferensi extends Component
             'jenisCode' => ['required', 'string', 'max:50', Rule::unique('jenis_kegiatan', 'code')->ignore($this->jenisId)],
             'jenisPaymentType' => 'required|in:paid,unpaid',
             'jenisLocationType' => 'required|in:dalam_kota,luar_kota',
-            'jenisEstimatedFee' => 'nullable|numeric|min:0',
+            // BUG-07: Batasi nilai maksimal untuk mencegah numeric overflow PostgreSQL decimal(12,2)
+            'jenisEstimatedFee' => 'nullable|numeric|min:0|max:999999999',
         ]);
 
         $data = [
@@ -107,7 +121,7 @@ class MasterReferensi extends Component
     public function openCreateLiburModal(): void
     {
         $this->reset(['liburId', 'liburName']);
-        $this->liburTanggal = "{$this->selectedYear}-" . date('m-d');
+        $this->liburTanggal = "{$this->selectedYear}-".date('m-d');
         $this->liburType = 'nasional';
         $this->showLiburModal = true;
     }

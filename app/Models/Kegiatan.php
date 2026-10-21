@@ -11,12 +11,21 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Kegiatan extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $table = 'kegiatan';
+
+    protected static function booted(): void
+    {
+        static::deleting(function (Kegiatan $kegiatan) {
+            // Bersihkan penugasan terkait saat kegiatan dihapus agar jadwal personil terbebas
+            $kegiatan->penugasan()->delete();
+        });
+    }
 
     protected $fillable = [
         'jenis_kegiatan_id',
@@ -101,7 +110,7 @@ class Kegiatan extends Model
         $e = is_string($end) ? Carbon::parse($end) : $end;
 
         return $query->where('start_datetime', '<', $e)
-                     ->where('end_datetime', '>', $s);
+            ->where('end_datetime', '>', $s);
     }
 
     public function scopeScheduled(Builder $query): Builder

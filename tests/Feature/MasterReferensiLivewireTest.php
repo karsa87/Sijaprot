@@ -90,7 +90,7 @@ class MasterReferensiLivewireTest extends TestCase
             ->assertHasNoErrors();
 
         $all = HariLibur::all();
-        $this->assertNotEmpty($all, 'HariLibur table is empty after saveHariLibur: ' . json_encode($all));
+        $this->assertNotEmpty($all, 'HariLibur table is empty after saveHariLibur: '.json_encode($all));
         $libur = HariLibur::whereDate('tanggal', '2026-10-28')->first();
         $this->assertNotNull($libur);
 
@@ -99,5 +99,24 @@ class MasterReferensiLivewireTest extends TestCase
             ->call('deleteHariLibur', $libur->id);
 
         $this->assertDatabaseMissing('hari_libur', ['tanggal' => '2026-10-28']);
+    }
+
+    /**
+     * BUG-07: Batasan estimasi honorarium untuk mencegah numeric overflow PostgreSQL.
+     */
+    public function test_cannot_input_estimated_fee_exceeding_threshold(): void
+    {
+        $this->withoutVite();
+        $this->actingAs($this->admin);
+
+        Livewire::test(MasterReferensi::class)
+            ->call('openCreateJenisModal')
+            ->set('jenisName', 'Kegiatan Ekstrem')
+            ->set('jenisCode', 'EKSTREM')
+            ->set('jenisPaymentType', 'paid')
+            ->set('jenisLocationType', 'dalam_kota')
+            ->set('jenisEstimatedFee', 10000000000) // 10 miliar
+            ->call('saveJenisKegiatan')
+            ->assertHasErrors(['jenisEstimatedFee']);
     }
 }

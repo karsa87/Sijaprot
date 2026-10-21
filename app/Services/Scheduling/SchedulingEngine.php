@@ -9,12 +9,15 @@ use App\Models\Penugasan;
 use App\Models\Protokol;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class SchedulingEngine
 {
     protected GapRuleChecker $gapChecker;
+
     protected DistributionScorer $scorer;
+
     protected RelaxationPipeline $pipeline;
 
     public function __construct(
@@ -83,19 +86,41 @@ class SchedulingEngine
 
     /**
      * Menugaskan dan menyimpan hasil rekomendasi ke database secara transaksional.
+     * SEC-03: Diproteksi oleh Distributed Atomic Lock untuk mencegah double-booking pada eksekusi serentak.
      *
-     * @param array<int>|null $customProtocolIds Jika admin ingin menugaskan daftar ID protokol tertentu
+     * @param  array<int>|null  $customProtocolIds  Jika admin ingin menugaskan daftar ID protokol tertentu
      */
     public function assignAndCommit(Kegiatan $kegiatan, ?array $customProtocolIds = null, ?int $assignedByUserId = null): Collection
     {
-        return DB::transaction(function () use ($kegiatan, $customProtocolIds, $assignedByUserId) {
-            $createdAssignments = collect();
+        return Cache::lock('scheduling_engine_lock', 10)->block(5, function () use ($kegiatan, $customProtocolIds, $assignedByUserId) {
+            return DB::transaction(function () use ($kegiatan, $customProtocolIds, $assignedByUserId) {
+                $createdAssignments = collect();
 
-            if ($customProtocolIds && count($customProtocolIds) > 0) {
-                // Penugasan dengan ID yang ditentukan admin
-                foreach ($customProtocolIds as $protoId) {
-                    $proto = Protokol::find($protoId);
-                    if ($proto) {
+                if ($customProtocolIds && count($customProtocolIds) > 0) {
+                    // Penugasan dengan ID yang ditentukan admin
+                    foreach ($customProtocolIds as $protoId) {
+                        $proto = Protokol::find($protoId);
+                        if ($proto) {
+                            $penugasan = Penugasan::updateOrCreate(
+                                [
+                                    'kegiatan_id' => $kegiatan->id,
+                                    'protokol_id' => $proto->id,
+                                ],
+                                [
+                                    'assigned_at' => now(),
+                                    'assigned_by' => $assignedByUserId,
+                                    'is_system_assigned' => false,
+                                    'selection_reason' => 'Dipilih secara manual oleh Admin.',
+                                ]
+                            );
+                            $createdAssignments->push($penugasan);
+                        }
+                    }
+                } else {
+                    // Penugasan otomatis oleh engine
+                    $result = $this->generateRecommendation($kegiatan);
+                    foreach ($result['recommendations'] as $rec) {
+                        $proto = $rec['protokol'];
                         $penugasan = Penugasan::updateOrCreate(
                             [
                                 'kegiatan_id' => $kegiatan->id,
@@ -104,46 +129,28 @@ class SchedulingEngine
                             [
                                 'assigned_at' => now(),
                                 'assigned_by' => $assignedByUserId,
-                                'is_system_assigned' => false,
-                                'selection_reason' => 'Dipilih secara manual oleh Admin.',
+                                'is_system_assigned' => true,
+                                'score_snapshot' => $rec['score'],
+                                'selection_reason' => $rec['reason'],
                             ]
                         );
                         $createdAssignments->push($penugasan);
                     }
                 }
-            } else {
-                // Penugasan otomatis oleh engine
-                $result = $this->generateRecommendation($kegiatan);
-                foreach ($result['recommendations'] as $rec) {
-                    $proto = $rec['protokol'];
-                    $penugasan = Penugasan::updateOrCreate(
-                        [
-                            'kegiatan_id' => $kegiatan->id,
-                            'protokol_id' => $proto->id,
-                        ],
-                        [
-                            'assigned_at' => now(),
-                            'assigned_by' => $assignedByUserId,
-                            'is_system_assigned' => true,
-                            'score_snapshot' => $rec['score'],
-                            'selection_reason' => $rec['reason'],
-                        ]
-                    );
-                    $createdAssignments->push($penugasan);
+
+                // Update status kegiatan menjadi scheduled jika kuota terpenuhi
+                if ($createdAssignments->count() >= $kegiatan->jumlah_protokol) {
+                    $kegiatan->update(['status' => KegiatanStatus::SCHEDULED->value]);
                 }
-            }
 
-            // Update status kegiatan menjadi scheduled jika kuota terpenuhi
-            if ($createdAssignments->count() >= $kegiatan->jumlah_protokol) {
-                $kegiatan->update(['status' => KegiatanStatus::SCHEDULED->value]);
-            }
-
-            return $createdAssignments;
+                return $createdAssignments;
+            });
         });
     }
 
     /**
      * Mengganti personil protokol bertugas secara manual disertai pencatatan audit log permanen.
+     * SEC-03: Diproteksi oleh Distributed Atomic Lock.
      */
     public function overrideProtokol(
         Kegiatan $kegiatan,
@@ -152,32 +159,34 @@ class SchedulingEngine
         string $reason,
         int $userId
     ): Penugasan {
-        return DB::transaction(function () use ($kegiatan, $previousProtokolId, $newProtokolId, $reason, $userId) {
-            // 1. Cari penugasan lama
-            $penugasan = Penugasan::where('kegiatan_id', $kegiatan->id)
-                ->where('protokol_id', $previousProtokolId)
-                ->firstOrFail();
+        return Cache::lock('scheduling_engine_lock', 10)->block(5, function () use ($kegiatan, $previousProtokolId, $newProtokolId, $reason, $userId) {
+            return DB::transaction(function () use ($kegiatan, $previousProtokolId, $newProtokolId, $reason, $userId) {
+                // 1. Cari penugasan lama
+                $penugasan = Penugasan::where('kegiatan_id', $kegiatan->id)
+                    ->where('protokol_id', $previousProtokolId)
+                    ->firstOrFail();
 
-            // 2. Update penugasan ke protokol baru
-            $penugasan->update([
-                'protokol_id' => $newProtokolId,
-                'is_override' => true,
-                'override_reason' => $reason,
-                'assigned_by' => $userId,
-                'assigned_at' => now(),
-            ]);
+                // 2. Update penugasan ke protokol baru
+                $penugasan->update([
+                    'protokol_id' => $newProtokolId,
+                    'is_override' => true,
+                    'override_reason' => $reason,
+                    'assigned_by' => $userId,
+                    'assigned_at' => now(),
+                ]);
 
-            // 3. Catat di tabel audit override log
-            AuditOverrideLog::create([
-                'penugasan_id' => $penugasan->id,
-                'kegiatan_id' => $kegiatan->id,
-                'previous_protokol_id' => $previousProtokolId,
-                'new_protokol_id' => $newProtokolId,
-                'overridden_by' => $userId,
-                'reason' => $reason,
-            ]);
+                // 3. Catat di tabel audit override log
+                AuditOverrideLog::create([
+                    'penugasan_id' => $penugasan->id,
+                    'kegiatan_id' => $kegiatan->id,
+                    'previous_protokol_id' => $previousProtokolId,
+                    'new_protokol_id' => $newProtokolId,
+                    'overridden_by' => $userId,
+                    'reason' => $reason,
+                ]);
 
-            return $penugasan;
+                return $penugasan;
+            });
         });
     }
 }

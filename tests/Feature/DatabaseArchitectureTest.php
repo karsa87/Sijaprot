@@ -2,10 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Models\HariLibur;
-use App\Models\JenisKegiatan;
 use App\Models\Protokol;
-use App\Models\User;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;

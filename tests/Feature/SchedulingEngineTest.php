@@ -6,14 +6,15 @@ use App\Enums\KegiatanStatus;
 use App\Enums\LocationType;
 use App\Enums\ProtokolStatus;
 use App\Enums\UserRole;
-use App\Models\AuditOverrideLog;
 use App\Models\JenisKegiatan;
 use App\Models\Kegiatan;
 use App\Models\Penugasan;
 use App\Models\Protokol;
 use App\Models\User;
+use App\Services\Scheduling\GapRuleChecker;
 use App\Services\Scheduling\SchedulingEngine;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
 
 class SchedulingEngineTest extends TestCase
@@ -21,8 +22,11 @@ class SchedulingEngineTest extends TestCase
     use RefreshDatabase;
 
     protected SchedulingEngine $engine;
+
     protected User $admin;
+
     protected JenisKegiatan $jenisDalamKota;
+
     protected JenisKegiatan $jenisLuarKota;
 
     protected function setUp(): void
@@ -169,7 +173,7 @@ class SchedulingEngineTest extends TestCase
             'location_type' => LocationType::DALAM_KOTA->value,
         ]);
 
-        $gapChecker = app(\App\Services\Scheduling\GapRuleChecker::class);
+        $gapChecker = app(GapRuleChecker::class);
         $this->assertFalse($gapChecker->passesAllHardRules($dewi, $kegiatan13Okt));
 
         // 14 Oktober (H+2) Dewi sudah bebas bertugas kembali
@@ -182,5 +186,45 @@ class SchedulingEngineTest extends TestCase
             'location_type' => LocationType::DALAM_KOTA->value,
         ]);
         $this->assertTrue($gapChecker->passesAllHardRules($dewi, $kegiatan14Okt));
+    }
+
+    /**
+     * SEC-03: Menjamin fungsi assignAndCommit memanfaatkan distributed atomic lock untuk mencegah double booking.
+     */
+    public function test_assign_and_commit_runs_under_atomic_cache_lock(): void
+    {
+        Cache::shouldReceive('lock')
+            ->once()
+            ->with('scheduling_engine_lock', 10)
+            ->andReturnSelf();
+
+        Cache::shouldReceive('block')
+            ->once()
+            ->with(5, \Mockery::type('Closure'))
+            ->andReturnUsing(fn ($seconds, $callback) => $callback());
+
+        $kegiatan = Kegiatan::create([
+            'jenis_kegiatan_id' => $this->jenisDalamKota->id,
+            'title' => 'Simultaneous Scheduling Test',
+            'start_datetime' => '2026-10-25 09:00:00',
+            'end_datetime' => '2026-10-25 12:00:00',
+            'jumlah_protokol' => 1,
+            'location_type' => LocationType::DALAM_KOTA->value,
+            'status' => KegiatanStatus::DRAFT->value,
+        ]);
+
+        $dewi = Protokol::create([
+            'name' => 'Dewi Test Lock',
+            'phone_wa' => '081234567888',
+            'status' => ProtokolStatus::ACTIVE,
+        ]);
+
+        $assignments = $this->engine->assignAndCommit($kegiatan, [$dewi->id], $this->admin->id);
+
+        $this->assertCount(1, $assignments);
+        $this->assertDatabaseHas('penugasan', [
+            'kegiatan_id' => $kegiatan->id,
+            'protokol_id' => $dewi->id,
+        ]);
     }
 }

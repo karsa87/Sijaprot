@@ -7,9 +7,10 @@ use App\Enums\ProtokolStatus;
 use App\Enums\UserRole;
 use App\Livewire\Kegiatan\FormKegiatan;
 use App\Models\JenisKegiatan;
+use App\Models\Kegiatan;
+use App\Models\Penugasan;
 use App\Models\Protokol;
 use App\Models\User;
-use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Tests\TestCase;
@@ -19,9 +20,13 @@ class FormKegiatanLivewireTest extends TestCase
     use RefreshDatabase;
 
     protected User $admin;
+
     protected JenisKegiatan $jenisDalamKota;
+
     protected JenisKegiatan $jenisLuarKota;
+
     protected Protokol $dewi;
+
     protected Protokol $andi;
 
     protected function setUp(): void
@@ -123,7 +128,7 @@ class FormKegiatanLivewireTest extends TestCase
 
     public function test_can_view_edit_form_kegiatan(): void
     {
-        $kegiatan = \App\Models\Kegiatan::create([
+        $kegiatan = Kegiatan::create([
             'jenis_kegiatan_id' => $this->jenisDalamKota->id,
             'title' => 'Rapat Koordinasi Keprotokolan',
             'detail' => 'Rapat internal protokol',
@@ -133,7 +138,7 @@ class FormKegiatanLivewireTest extends TestCase
             'status' => 'scheduled',
         ]);
 
-        \App\Models\Penugasan::create([
+        Penugasan::create([
             'kegiatan_id' => $kegiatan->id,
             'protokol_id' => $this->dewi->id,
             'assigned_at' => now(),
@@ -150,7 +155,7 @@ class FormKegiatanLivewireTest extends TestCase
 
     public function test_can_update_existing_kegiatan_and_assignments(): void
     {
-        $kegiatan = \App\Models\Kegiatan::create([
+        $kegiatan = Kegiatan::create([
             'jenis_kegiatan_id' => $this->jenisDalamKota->id,
             'title' => 'Rapat Awal',
             'detail' => 'Keterangan awal',
@@ -160,7 +165,7 @@ class FormKegiatanLivewireTest extends TestCase
             'status' => 'scheduled',
         ]);
 
-        \App\Models\Penugasan::create([
+        Penugasan::create([
             'kegiatan_id' => $kegiatan->id,
             'protokol_id' => $this->dewi->id,
             'assigned_at' => now(),
@@ -184,7 +189,7 @@ class FormKegiatanLivewireTest extends TestCase
 
     public function test_can_delete_kegiatan_from_edit_form(): void
     {
-        $kegiatan = \App\Models\Kegiatan::create([
+        $kegiatan = Kegiatan::create([
             'jenis_kegiatan_id' => $this->jenisDalamKota->id,
             'title' => 'Kegiatan Dihapus Dari Form',
             'start_datetime' => '2026-10-25 09:00:00',
@@ -193,7 +198,7 @@ class FormKegiatanLivewireTest extends TestCase
             'status' => 'scheduled',
         ]);
 
-        \App\Models\Penugasan::create([
+        Penugasan::create([
             'kegiatan_id' => $kegiatan->id,
             'protokol_id' => $this->dewi->id,
             'assigned_at' => now(),
@@ -207,7 +212,7 @@ class FormKegiatanLivewireTest extends TestCase
             ->call('deleteKegiatan')
             ->assertRedirect(route('dashboard'));
 
-        $this->assertDatabaseMissing('kegiatan', ['id' => $kegiatan->id]);
+        $this->assertSoftDeleted('kegiatan', ['id' => $kegiatan->id]);
         $this->assertDatabaseMissing('penugasan', ['kegiatan_id' => $kegiatan->id]);
     }
 
@@ -272,5 +277,94 @@ class FormKegiatanLivewireTest extends TestCase
             // Hapus personil dari list
             ->call('removeProtocolFromList', $this->andi->id)
             ->assertCount('recommendations', 0);
+    }
+
+    /**
+     * BUG-01: Direct Swap dan Add Manual wajib memvalidasi Hard Rules (bentrok jadwal / overlap).
+     */
+    public function test_swap_and_add_manual_reject_protocol_violating_hard_rules(): void
+    {
+        $this->actingAs($this->admin);
+
+        // Buat kegiatan yang sedang berjalan untuk Andi di jam 09:00 - 12:00
+        $tugasAndi = Kegiatan::create([
+            'jenis_kegiatan_id' => $this->jenisDalamKota->id,
+            'title' => 'Tugas Andi yang Berlangsung',
+            'start_datetime' => '2026-10-25 09:00:00',
+            'end_datetime' => '2026-10-25 12:00:00',
+            'jumlah_protokol' => 1,
+            'location_type' => LocationType::DALAM_KOTA->value,
+            'status' => 'scheduled',
+        ]);
+        Penugasan::create([
+            'kegiatan_id' => $tugasAndi->id,
+            'protokol_id' => $this->andi->id,
+            'assigned_at' => now(),
+        ]);
+
+        $test = Livewire::test(FormKegiatan::class)
+            ->set('title', 'Tugas Baru Jam Beririsan')
+            ->set('jenis_kegiatan_id', $this->jenisDalamKota->id)
+            ->set('jumlah_protokol', 1)
+            ->set('start_date', '2026-10-25')
+            ->set('start_time', '10:00')
+            ->set('end_date', '2026-10-25')
+            ->set('end_time', '13:00')
+            // Coba Add Manual Andi (yang sedang bertugas di jam 09:00 - 12:00)
+            ->call('openAddManualModal')
+            ->set('manualProtoId', $this->andi->id)
+            ->set('manualReason', 'Paksa tambah Andi')
+            ->call('addManualProtocol')
+            ->assertHasErrors(['manualProtoId'])
+            ->assertSet('showAddManualModal', true);
+
+        // Tambahkan Dewi secara manual
+        $test->set('manualProtoId', $this->dewi->id)
+            ->set('manualReason', 'Dewi tersedia')
+            ->call('addManualProtocol')
+            ->assertSet('showAddManualModal', false)
+            // Sekarang coba swap Dewi dengan Andi -> harus DITOLAK
+            ->call('openSwapModal', $this->dewi->id)
+            ->set('swapNewProtoId', $this->andi->id)
+            ->set('swapReason', 'Coba swap ke Andi yang bentrok')
+            ->call('applySwapProtocol')
+            ->assertHasErrors(['swapNewProtoId'])
+            ->assertSet('showSwapModal', true);
+    }
+
+    /**
+     * BUG-03: Mencegah durasi minus / jam selesai lebih awal dari jam mulai di hari yang sama.
+     */
+    public function test_form_rejects_negative_or_inverted_duration_on_same_day(): void
+    {
+        $this->actingAs($this->admin);
+
+        Livewire::test(FormKegiatan::class)
+            ->set('title', 'Tugas Jam Minus')
+            ->set('jenis_kegiatan_id', $this->jenisDalamKota->id)
+            ->set('jumlah_protokol', 1)
+            ->set('start_date', '2026-10-25')
+            ->set('start_time', '16:00')
+            ->set('end_date', '2026-10-25')
+            ->set('end_time', '09:00') // Inversi: selesai jam 09:00 tapi mulai 16:00
+            ->call('runAutoSchedulerSimulation')
+            ->assertHasErrors(['end_date']);
+    }
+
+    /**
+     * BUG-05: Deteksi weekend pada dinas multi-hari (Jumat s.d. Minggu).
+     */
+    public function test_multiday_event_spanning_into_weekend_detects_weekend_and_offday_fee(): void
+    {
+        $this->actingAs($this->admin);
+
+        // Jumat 23 Okt s.d. Minggu 25 Okt 2026
+        Livewire::test(FormKegiatan::class)
+            ->set('jenis_kegiatan_id', $this->jenisDalamKota->id)
+            ->set('start_date', '2026-10-23') // Jumat (Hari kerja biasa)
+            ->set('end_date', '2026-10-25')   // Minggu (Weekend)
+            ->call('updateAutoDetection')
+            ->assertSet('isWeekend', true)
+            ->assertSet('detectedFee', 'Dibayar (Luar Hari Kerja)');
     }
 }

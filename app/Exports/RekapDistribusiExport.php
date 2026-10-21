@@ -11,10 +11,12 @@ use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
 use Maatwebsite\Excel\Concerns\WithTitle;
 
-class RekapDistribusiExport implements FromCollection, WithHeadings, WithMapping, ShouldAutoSize, WithTitle
+class RekapDistribusiExport implements FromCollection, ShouldAutoSize, WithHeadings, WithMapping, WithTitle
 {
     protected int $month;
+
     protected int $year;
+
     protected int $rowNumber = 0;
 
     public function __construct(int $month, int $year)
@@ -75,11 +77,11 @@ class RekapDistribusiExport implements FromCollection, WithHeadings, WithMapping
             $protokol->nip ?? '-',
             $protokol->name,
             $protokol->phone_wa,
-            $protokol->tugas_dibayar_workday . 'x',
-            $protokol->tugas_dibayar_offday . 'x',
-            $protokol->tugas_unpaid . 'x',
-            $protokol->trip_luar_kota . 'x',
-            $total . 'x',
+            $protokol->tugas_dibayar_workday.'x',
+            $protokol->tugas_dibayar_offday.'x',
+            $protokol->tugas_unpaid.'x',
+            $protokol->trip_luar_kota.'x',
+            $total.'x',
             $status,
         ];
     }

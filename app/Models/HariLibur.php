@@ -38,6 +38,7 @@ class HariLibur extends Model
     public static function isHoliday(Carbon|string $date): bool
     {
         $d = is_string($date) ? Carbon::parse($date)->toDateString() : $date->toDateString();
+
         return static::where('tanggal', $d)->exists();
     }
 }

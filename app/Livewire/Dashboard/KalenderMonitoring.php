@@ -2,7 +2,6 @@
 
 namespace App\Livewire\Dashboard;
 
-use App\Enums\ProtokolStatus;
 use App\Models\HariLibur;
 use App\Models\Kegiatan;
 use App\Models\Protokol;
@@ -12,14 +11,20 @@ use Livewire\Component;
 class KalenderMonitoring extends Component
 {
     public int $month;
+
     public int $year;
+
     public int $selectedDay;
 
     // State Modal Konfirmasi Hapus Kegiatan
     public bool $showDeleteModal = false;
+
     public ?int $deletingKegiatanId = null;
+
     public string $deletingKegiatanTitle = '';
+
     public int $deletingKegiatanProtokolCount = 0;
+
     public string $deletingKegiatanTime = '';
 
     public function mount(?int $day = null): void
@@ -74,13 +79,13 @@ class KalenderMonitoring extends Component
         $this->deletingKegiatanId = $kegiatan->id;
         $this->deletingKegiatanTitle = $kegiatan->title;
         $this->deletingKegiatanProtokolCount = $kegiatan->protokols->count();
-        $this->deletingKegiatanTime = $kegiatan->start_datetime->translatedFormat('d M Y, H:i') . ' WIB';
+        $this->deletingKegiatanTime = $kegiatan->start_datetime->translatedFormat('d M Y, H:i').' WIB';
         $this->showDeleteModal = true;
     }
 
     public function deleteKegiatan(): void
     {
-        if (!$this->deletingKegiatanId) {
+        if (! $this->deletingKegiatanId) {
             return;
         }
 
