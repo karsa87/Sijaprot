@@ -102,4 +102,37 @@ class KalenderMonitoringLivewireTest extends TestCase
             ->call('prevMonth')
             ->assertSet('month', $currentMonth);
     }
+
+    public function test_can_delete_kegiatan_and_cascade_assignments(): void
+    {
+        $targetDate = Carbon::now()->startOfMonth()->addDays(4); // Tanggal 5
+
+        $kegiatan = Kegiatan::create([
+            'jenis_kegiatan_id' => $this->jenis->id,
+            'title' => 'Acara Akan Dihapus',
+            'start_datetime' => $targetDate->copy()->setTime(10, 0),
+            'end_datetime' => $targetDate->copy()->setTime(12, 0),
+            'jumlah_protokol' => 1,
+            'location_type' => LocationType::DALAM_KOTA->value,
+            'status' => KegiatanStatus::SCHEDULED->value,
+        ]);
+
+        Penugasan::create([
+            'kegiatan_id' => $kegiatan->id,
+            'protokol_id' => $this->dewi->id,
+            'assigned_at' => now(),
+        ]);
+
+        $this->actingAs($this->admin);
+
+        Livewire::test(KalenderMonitoring::class)
+            ->call('confirmDeleteKegiatan', $kegiatan->id)
+            ->assertSet('showDeleteModal', true)
+            ->assertSet('deletingKegiatanTitle', 'Acara Akan Dihapus')
+            ->call('deleteKegiatan')
+            ->assertSet('showDeleteModal', false);
+
+        $this->assertDatabaseMissing('kegiatan', ['id' => $kegiatan->id]);
+        $this->assertDatabaseMissing('penugasan', ['kegiatan_id' => $kegiatan->id]);
+    }
 }

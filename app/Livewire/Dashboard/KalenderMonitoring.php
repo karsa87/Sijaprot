@@ -15,6 +15,13 @@ class KalenderMonitoring extends Component
     public int $year;
     public int $selectedDay;
 
+    // State Modal Konfirmasi Hapus Kegiatan
+    public bool $showDeleteModal = false;
+    public ?int $deletingKegiatanId = null;
+    public string $deletingKegiatanTitle = '';
+    public int $deletingKegiatanProtokolCount = 0;
+    public string $deletingKegiatanTime = '';
+
     public function mount(?int $day = null): void
     {
         $now = Carbon::now();
@@ -59,6 +66,40 @@ class KalenderMonitoring extends Component
         $dateStr = "{$this->year}-{$m}-{$d}";
 
         return redirect()->route('kegiatan.create', ['date' => $dateStr]);
+    }
+
+    public function confirmDeleteKegiatan(int $id): void
+    {
+        $kegiatan = Kegiatan::with('protokols')->findOrFail($id);
+        $this->deletingKegiatanId = $kegiatan->id;
+        $this->deletingKegiatanTitle = $kegiatan->title;
+        $this->deletingKegiatanProtokolCount = $kegiatan->protokols->count();
+        $this->deletingKegiatanTime = $kegiatan->start_datetime->translatedFormat('d M Y, H:i') . ' WIB';
+        $this->showDeleteModal = true;
+    }
+
+    public function deleteKegiatan(): void
+    {
+        if (!$this->deletingKegiatanId) {
+            return;
+        }
+
+        $kegiatan = Kegiatan::findOrFail($this->deletingKegiatanId);
+        $title = $kegiatan->title;
+
+        // Cascade delete membersihkan relasi penugasan dan audit log secara otomatis
+        $kegiatan->delete();
+
+        $this->showDeleteModal = false;
+        $this->reset(['deletingKegiatanId', 'deletingKegiatanTitle', 'deletingKegiatanProtokolCount', 'deletingKegiatanTime']);
+
+        session()->flash('success', "Kegiatan '{$title}' dan seluruh penugasan terkait berhasil dibatalkan & dihapus.");
+    }
+
+    public function cancelDeleteKegiatan(): void
+    {
+        $this->showDeleteModal = false;
+        $this->reset(['deletingKegiatanId', 'deletingKegiatanTitle', 'deletingKegiatanProtokolCount', 'deletingKegiatanTime']);
     }
 
     public function render()

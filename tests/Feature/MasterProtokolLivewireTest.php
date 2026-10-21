@@ -123,4 +123,32 @@ class MasterProtokolLivewireTest extends TestCase
             ->assertSet('showStatsModal', true)
             ->assertSee('Statistik Penugasan Pegawai');
     }
+
+    public function test_livewire_can_confirm_and_delete_protokol(): void
+    {
+        $this->withoutVite();
+
+        $proto = Protokol::create([
+            'name' => 'Bambang Sudirman',
+            'phone_wa' => '081299998888',
+            'status' => ProtokolStatus::ACTIVE,
+        ]);
+
+        $this->actingAs($this->admin);
+
+        // 1. Open confirm modal
+        Livewire::test(DaftarProtokol::class)
+            ->call('confirmDelete', $proto->id)
+            ->assertSet('showDeleteModal', true)
+            ->assertSet('deletingProtokolName', 'Bambang Sudirman')
+            ->assertSet('deletingProtokolTaskCount', 0)
+            ->call('deleteProtokol')
+            ->assertSet('showDeleteModal', false);
+
+        // 2. Assert soft deleted in database
+        $this->assertSoftDeleted('protokols', [
+            'id' => $proto->id,
+            'name' => 'Bambang Sudirman',
+        ]);
+    }
 }

@@ -120,4 +120,157 @@ class FormKegiatanLivewireTest extends TestCase
 
         $this->assertDatabaseCount('penugasan', 2);
     }
+
+    public function test_can_view_edit_form_kegiatan(): void
+    {
+        $kegiatan = \App\Models\Kegiatan::create([
+            'jenis_kegiatan_id' => $this->jenisDalamKota->id,
+            'title' => 'Rapat Koordinasi Keprotokolan',
+            'detail' => 'Rapat internal protokol',
+            'start_datetime' => '2026-10-25 09:00:00',
+            'end_datetime' => '2026-10-25 11:00:00',
+            'jumlah_protokol' => 1,
+            'status' => 'scheduled',
+        ]);
+
+        \App\Models\Penugasan::create([
+            'kegiatan_id' => $kegiatan->id,
+            'protokol_id' => $this->dewi->id,
+            'assigned_at' => now(),
+            'is_system_assigned' => true,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get("/kegiatan/{$kegiatan->id}/edit")
+            ->assertStatus(200)
+            ->assertSee('Form Ubah Kegiatan & Penugasan Protokol')
+            ->assertSee('Rapat Koordinasi Keprotokolan')
+            ->assertSee('Dewi Kurnia');
+    }
+
+    public function test_can_update_existing_kegiatan_and_assignments(): void
+    {
+        $kegiatan = \App\Models\Kegiatan::create([
+            'jenis_kegiatan_id' => $this->jenisDalamKota->id,
+            'title' => 'Rapat Awal',
+            'detail' => 'Keterangan awal',
+            'start_datetime' => '2026-10-25 09:00:00',
+            'end_datetime' => '2026-10-25 11:00:00',
+            'jumlah_protokol' => 1,
+            'status' => 'scheduled',
+        ]);
+
+        \App\Models\Penugasan::create([
+            'kegiatan_id' => $kegiatan->id,
+            'protokol_id' => $this->dewi->id,
+            'assigned_at' => now(),
+            'is_system_assigned' => true,
+        ]);
+
+        $this->actingAs($this->admin);
+
+        Livewire::test(FormKegiatan::class, ['kegiatan' => $kegiatan])
+            ->assertSet('isEditing', true)
+            ->assertSet('title', 'Rapat Awal')
+            ->set('title', 'Rapat Koordinasi Revisi')
+            ->set('detail', 'Keterangan diperbarui')
+            ->call('confirmAndSave')
+            ->assertRedirect(route('dashboard'));
+
+        $kegiatan->refresh();
+        $this->assertEquals('Rapat Koordinasi Revisi', $kegiatan->title);
+        $this->assertEquals('Keterangan diperbarui', $kegiatan->detail);
+    }
+
+    public function test_can_delete_kegiatan_from_edit_form(): void
+    {
+        $kegiatan = \App\Models\Kegiatan::create([
+            'jenis_kegiatan_id' => $this->jenisDalamKota->id,
+            'title' => 'Kegiatan Dihapus Dari Form',
+            'start_datetime' => '2026-10-25 09:00:00',
+            'end_datetime' => '2026-10-25 11:00:00',
+            'jumlah_protokol' => 1,
+            'status' => 'scheduled',
+        ]);
+
+        \App\Models\Penugasan::create([
+            'kegiatan_id' => $kegiatan->id,
+            'protokol_id' => $this->dewi->id,
+            'assigned_at' => now(),
+        ]);
+
+        $this->actingAs($this->admin);
+
+        Livewire::test(FormKegiatan::class, ['kegiatan' => $kegiatan])
+            ->call('confirmDeleteKegiatan')
+            ->assertSet('showDeleteModal', true)
+            ->call('deleteKegiatan')
+            ->assertRedirect(route('dashboard'));
+
+        $this->assertDatabaseMissing('kegiatan', ['id' => $kegiatan->id]);
+        $this->assertDatabaseMissing('penugasan', ['kegiatan_id' => $kegiatan->id]);
+    }
+
+    public function test_can_swap_protocol_in_candidate_list(): void
+    {
+        $this->actingAs($this->admin);
+
+        $fajar = Protokol::create(['name' => 'Fajar Pratama', 'phone_wa' => '089999', 'status' => ProtokolStatus::ACTIVE]);
+
+        Livewire::test(FormKegiatan::class)
+            ->set('title', 'Kunjungan Tamu')
+            ->set('jenis_kegiatan_id', $this->jenisDalamKota->id)
+            ->set('jumlah_protokol', 1)
+            ->set('start_date', '2026-10-20')
+            ->set('start_time', '08:30')
+            ->set('end_date', '2026-10-20')
+            ->set('end_time', '12:00')
+            ->call('runAutoSchedulerSimulation')
+            ->assertCount('recommendations', 1)
+            // Ganti personil rekomendasi pertama dengan Fajar
+            ->call('openSwapModal', $this->dewi->id)
+            ->assertSet('showSwapModal', true)
+            ->assertSet('swapOldProtoName', 'Dewi Kurnia')
+            ->set('swapNewProtoId', $fajar->id)
+            ->set('swapReason', 'Disposisi pimpinan untuk tugas khusus')
+            ->call('applySwapProtocol')
+            ->assertSet('showSwapModal', false)
+            ->assertSee('Fajar Pratama')
+            ->assertDontSee('Dewi Kurnia')
+            ->call('confirmAndSave')
+            ->assertRedirect(route('dashboard'));
+
+        $this->assertDatabaseHas('penugasan', [
+            'protokol_id' => $fajar->id,
+        ]);
+        $this->assertDatabaseMissing('penugasan', [
+            'protokol_id' => $this->dewi->id,
+        ]);
+    }
+
+    public function test_can_manually_add_and_remove_protocol(): void
+    {
+        $this->actingAs($this->admin);
+
+        Livewire::test(FormKegiatan::class)
+            ->set('title', 'Acara Manual')
+            ->set('jenis_kegiatan_id', $this->jenisDalamKota->id)
+            ->set('jumlah_protokol', 1)
+            ->set('start_date', '2026-10-20')
+            ->set('start_time', '08:30')
+            ->set('end_date', '2026-10-20')
+            ->set('end_time', '12:00')
+            // Tambahkan personil secara manual tanpa menjalankan simulasi
+            ->call('openAddManualModal')
+            ->assertSet('showAddManualModal', true)
+            ->set('manualProtoId', $this->andi->id)
+            ->set('manualReason', 'Penugasan darurat')
+            ->call('addManualProtocol')
+            ->assertSet('showAddManualModal', false)
+            ->assertCount('recommendations', 1)
+            ->assertSee('Andi Prasetyo')
+            // Hapus personil dari list
+            ->call('removeProtocolFromList', $this->andi->id)
+            ->assertCount('recommendations', 0);
+    }
 }

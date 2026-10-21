@@ -28,6 +28,7 @@ Route::middleware('auth')->group(function () {
 
     // 2. Penjadwalan & Kegiatan
     Route::get('/kegiatan/baru', FormKegiatan::class)->name('kegiatan.create');
+    Route::get('/kegiatan/{kegiatan}/edit', FormKegiatan::class)->name('kegiatan.edit');
 
     // 3. Master Data Pegawai Protokol
     Route::get('/master/protokol', DaftarProtokol::class)->name('master.protokol');

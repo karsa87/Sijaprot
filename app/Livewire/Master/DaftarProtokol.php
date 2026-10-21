@@ -35,6 +35,12 @@ class DaftarProtokol extends Component
     public array $statBreakdown = [];
     public array $statHistory = [];
 
+    // State Modal Konfirmasi Hapus
+    public bool $showDeleteModal = false;
+    public ?int $deletingProtokolId = null;
+    public string $deletingProtokolName = '';
+    public int $deletingProtokolTaskCount = 0;
+
     protected function rules(): array
     {
         return [
@@ -132,6 +138,38 @@ class DaftarProtokol extends Component
         $this->showStatsModal = false;
         $this->statProtokol = null;
         $this->statHistory = [];
+    }
+
+    public function confirmDelete(int $id): void
+    {
+        $proto = Protokol::findOrFail($id);
+        $this->deletingProtokolId = $proto->id;
+        $this->deletingProtokolName = $proto->name;
+        $this->deletingProtokolTaskCount = $proto->penugasan()->count();
+        $this->showDeleteModal = true;
+    }
+
+    public function deleteProtokol(): void
+    {
+        if (!$this->deletingProtokolId) {
+            return;
+        }
+
+        $proto = Protokol::findOrFail($this->deletingProtokolId);
+        $name = $proto->name;
+
+        $proto->delete();
+
+        $this->showDeleteModal = false;
+        $this->reset(['deletingProtokolId', 'deletingProtokolName', 'deletingProtokolTaskCount']);
+
+        session()->flash('success', "Pegawai protokol '{$name}' berhasil dihapus (diarsipkan dengan aman).");
+    }
+
+    public function cancelDelete(): void
+    {
+        $this->showDeleteModal = false;
+        $this->reset(['deletingProtokolId', 'deletingProtokolName', 'deletingProtokolTaskCount']);
     }
 
     public function render()

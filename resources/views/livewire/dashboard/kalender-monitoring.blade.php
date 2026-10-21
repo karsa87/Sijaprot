@@ -212,9 +212,17 @@
                                     </span>
                                     <h4 class="font-bold text-slate-900 text-xs mt-0.5">{{ $kegiatan->title }}</h4>
                                 </div>
-                                <span class="text-[10px] font-bold px-2 py-0.5 rounded border {{ $badgeTypeColor }}">
-                                    {{ $kegiatan->jenisKegiatan?->payment_type?->label() ?? 'Free' }} • {{ $kegiatan->location_type->label() }}
-                                </span>
+                                <div class="flex items-center space-x-1.5 shrink-0">
+                                    <span class="text-[10px] font-bold px-2 py-0.5 rounded border {{ $badgeTypeColor }}">
+                                        {{ $kegiatan->jenisKegiatan?->payment_type?->label() ?? 'Free' }} • {{ $kegiatan->location_type->label() }}
+                                    </span>
+                                    <a href="{{ route('kegiatan.edit', $kegiatan->id) }}" class="p-1 rounded text-slate-400 hover:text-blue-700 hover:bg-slate-200 transition" title="Ubah Kegiatan">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                                    </a>
+                                    <button wire:click="confirmDeleteKegiatan({{ $kegiatan->id }})" class="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition" title="Hapus Kegiatan">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                    </button>
+                                </div>
                             </div>
 
                             @if ($kegiatan->detail)
@@ -258,4 +266,51 @@
         </div>
 
     </div>
+
+    <!-- MODAL KONFIRMASI HAPUS KEGIATAN -->
+    @if ($showDeleteModal)
+        <div class="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+                <div class="flex items-center space-x-3 text-rose-600 mb-4">
+                    <div class="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center shrink-0">
+                        <svg class="w-5 h-5 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-slate-900">Konfirmasi Hapus Kegiatan</h3>
+                        <p class="text-xs text-slate-500">Jadwal dan seluruh penugasan personil akan dibatalkan.</p>
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-100 text-xs text-slate-700 space-y-2 mb-4">
+                    <div class="flex justify-between">
+                        <span class="text-slate-500">Nama Acara:</span>
+                        <span class="font-bold text-slate-900 text-right">{{ $deletingKegiatanTitle }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-500">Waktu Pelaksanaan:</span>
+                        <span class="font-semibold text-slate-900">{{ $deletingKegiatanTime }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-500">Personil Ditugaskan:</span>
+                        <span class="font-semibold text-slate-900">{{ $deletingKegiatanProtokolCount }} orang personil</span>
+                    </div>
+                </div>
+
+                <div class="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-[11px] mb-4 flex items-start space-x-2">
+                    <svg class="w-4 h-4 text-amber-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                    <span>Penghapusan ini akan membebaskan kembali jadwal seluruh personil protokol terkait sehingga siap untuk ditugaskan pada agenda lain.</span>
+                </div>
+
+                <div class="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
+                    <button wire:click="cancelDeleteKegiatan" type="button" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition">
+                        Batal
+                    </button>
+                    <button wire:click="deleteKegiatan" type="button" class="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-lg shadow-xs transition flex items-center space-x-1">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        <span>Ya, Hapus Kegiatan</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    @endif
 </div>
