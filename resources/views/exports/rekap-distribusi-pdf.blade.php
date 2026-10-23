@@ -6,64 +6,64 @@
     <title>Rekapitulasi Tugas Protokol - Kemendikdasmen</title>
     <style>
         @page {
-            margin: 1.5cm;
+            margin: 1cm 1.2cm;
         }
 
         body {
             font-family: 'Helvetica', 'Arial', sans-serif;
-            font-size: 10pt;
+            font-size: 9pt;
             color: #1e293b;
-            line-height: 1.4;
+            line-height: 1.35;
         }
 
         .header {
             text-align: center;
             border-bottom: 2px solid #0f172a;
             padding-bottom: 8px;
-            margin-bottom: 16px;
+            margin-bottom: 14px;
         }
 
         .header h1 {
-            font-size: 13pt;
+            font-size: 12pt;
             margin: 0;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
 
         .header h2 {
-            font-size: 11pt;
-            margin: 3px 0;
+            font-size: 10pt;
+            margin: 2px 0;
             font-weight: normal;
         }
 
         .header p {
-            font-size: 8pt;
+            font-size: 7.5pt;
             margin: 0;
             color: #475569;
         }
 
         .title-block {
             text-align: center;
-            margin-bottom: 14px;
+            margin-bottom: 12px;
         }
 
         .title-block h3 {
             margin: 0;
-            font-size: 11pt;
+            font-size: 10.5pt;
             text-transform: uppercase;
             color: #1A5276;
         }
 
         .title-block span {
-            font-size: 9pt;
+            font-size: 8.5pt;
             color: #64748b;
         }
 
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 20px;
-            font-size: 8.5pt;
+            margin-bottom: 18px;
+            font-size: 7.5pt;
         }
 
         th {
@@ -71,13 +71,15 @@
             color: #ffffff;
             font-weight: bold;
             text-align: center;
-            padding: 6px 4px;
+            padding: 5px 2px;
             border: 1px solid #0f3650;
+            vertical-align: middle;
         }
 
         td {
-            padding: 5px 4px;
+            padding: 4px 3px;
             border: 1px solid #cbd5e1;
+            vertical-align: middle;
         }
 
         .text-center {
@@ -146,47 +148,44 @@
     <table>
         <thead>
             <tr>
-                <th style="width: 25px;">No</th>
-                <th>Nama Pegawai Protokol</th>
-                <th style="width: 75px;">No. WhatsApp</th>
-                <th style="width: 50px;">Dibayar (Kerja)</th>
-                <th style="width: 50px;">Dibayar (Libur)</th>
-                <th style="width: 45px;">Tidak Dibayar</th>
-                <th style="width: 50px;">Luar Kota</th>
-                <th style="width: 45px;">Total</th>
-                <th style="width: 75px;">Status Keseimbangan</th>
+                <th rowspan="2" style="width: 22px;">No</th>
+                <th rowspan="2">Nama Pegawai Protokol</th>
+                <th colspan="2">Dibayar</th>
+                <th colspan="2">Tidak Dibayar</th>
+                <th rowspan="2" style="width: 48px;">Total Weekday</th>
+                <th rowspan="2" style="width: 48px;">Total Weekend</th>
+                <th rowspan="2" style="width: 45px;">Dalam Kota</th>
+                <th rowspan="2" style="width: 45px;">Luar Kota</th>
+                <th rowspan="2" style="width: 45px;">Total Bertugas</th>
+            </tr>
+            <tr>
+                <th style="width: 40px;">Hari Kerja</th>
+                <th style="width: 40px;">Hari Libur</th>
+                <th style="width: 40px;">Hari Kerja</th>
+                <th style="width: 40px;">Hari Libur</th>
             </tr>
         </thead>
         <tbody>
             @foreach ($protokols as $idx => $p)
-                @php
-                    $total = $p->total_tugas_bulan_ini;
-                    $paid = $p->tugas_dibayar_workday + $p->tugas_dibayar_offday;
-                    $statusClass = 'badge-neutral';
-                    $statusLabel = 'Seimbang';
-                    if ($total == 0) {
-                        $statusClass = 'badge-warn';
-                        $statusLabel = 'Belum Tugas';
-                    } elseif ($p->tugas_dibayar_offday == 0) {
-                        $statusClass = 'badge-warn';
-                        $statusLabel = 'Prioritas Weekend';
-                    } elseif ($paid >= 3) {
-                        $statusClass = 'badge-optimal';
-                        $statusLabel = 'Sangat Seimbang';
-                    }
-                @endphp
                 <tr>
                     <td class="text-center">{{ $idx + 1 }}</td>
-                    <td class="font-bold">{{ $p->name }}</td>
-                    <td class="text-center">{{ $p->phone_wa }}</td>
+                    <td class="font-bold">
+                        {{ $p->name }}
+                        @if (!empty($p->nip))
+                            <div style="font-size: 7pt; font-weight: normal; color: #64748b;">NIP. {{ $p->nip }}
+                            </div>
+                        @endif
+                    </td>
                     <td class="text-center">{{ $p->tugas_dibayar_workday }}x</td>
                     <td class="text-center">{{ $p->tugas_dibayar_offday }}x</td>
-                    <td class="text-center">{{ $p->tugas_unpaid }}x</td>
+                    <td class="text-center">{{ $p->tugas_unpaid_workday }}x</td>
+                    <td class="text-center">{{ $p->tugas_unpaid_offday }}x</td>
+                    <td class="text-center font-bold">{{ $p->tugas_workday }}x</td>
+                    <td class="text-center font-bold">{{ $p->tugas_offday }}x</td>
+                    <td class="text-center">{{ $p->trip_dalam_kota }}x</td>
                     <td class="text-center">{{ $p->trip_luar_kota }}x</td>
-                    <td class="text-center font-bold">{{ $total }}x</td>
-                    <td class="text-center">
-                        <span class="badge {{ $statusClass }}">{{ $statusLabel }}</span>
-                    </td>
+                    <td class="text-center font-bold" style="background-color: #f8fafc;">
+                        {{ $p->total_tugas_bulan_ini }}x</td>
                 </tr>
             @endforeach
         </tbody>

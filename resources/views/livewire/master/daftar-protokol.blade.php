@@ -207,8 +207,7 @@
             <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200">
                 <div class="flex items-center justify-between pb-3 border-b border-slate-100">
                     <div>
-                        <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Statistik Penugasan
-                            Pegawai</span>
+                        <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Statistik Penugasan Pegawai</span>
                         <h3 class="text-base font-bold text-slate-900 mt-0.5">{{ $statProtokol->name }}</h3>
                         <p class="text-xs text-slate-500">{{ $statProtokol->phone_wa }} • Status
                             {{ $statProtokol->status->label() }}</p>

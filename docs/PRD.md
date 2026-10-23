@@ -71,14 +71,78 @@ Menjadi acuan otomatis saat pembuatan kegiatan baru:
 4. **S4 — Rotasi Protokol Terlama Belum Bertugas**:
    - Memberikan prioritas kepada pegawai yang memiliki interval istirahat terlama sejak penugasan terakhir.
 
-### 3.3 Relaksasi Bertahap (Saat Pool Pegawai Kurang)
+### 3.3 Penentuan & Aturan Status Keseimbangan (Fairness Rules & Status Determination)
+
+Status Keseimbangan merupakan indikator transparansi keadilan distribusi tugas yang dievaluasi secara dinamis baik pada level **Individu Pegawai Protokol** maupun **Agregat Tim/Sistem**.
+
+#### 3.3.1 Variabel Penentu Status Keseimbangan
+Evaluasi dihitung per siklus bulan kalender berjalan ($Month, Year$) menggunakan metrik terindeks:
+- $T_{\text{total}}$: Total kegiatan yang telah ditugaskan bulan ini.
+- $T_{\text{paid\_work}}$: Tugas dibayar pada hari kerja (Senin–Jumat).
+- $T_{\text{paid\_off}}$: Tugas dibayar pada luar hari kerja (Sabtu, Minggu, atau Hari Libur Nasional).
+- $T_{\text{paid}}$: Total penugasan berbayar ($T_{\text{paid\_work}} + T_{\text{paid\_off}}$).
+- $T_{\text{unpaid}}$: Total tugas tidak berbayar (kegiatan rutin internal / apel).
+- $T_{\text{trip}}$: Frekuensi perjalanan dinas luar kota.
+- $\text{Avg}_{\text{team}}$: Rata-rata penugasan tim protokol aktif bulan berjalan.
+
+#### 3.3.2 Kategori Status Keseimbangan Individu (Per Protokol)
+Digunakan pada tabel **Rekapitulasi Keseimbangan Tugas**, modal statistik pegawai, dan ekspor laporan resmi (Excel & PDF):
+
+| Status Keseimbangan | Badge Visual | Syarat / Aturan Penentuan | Dampak & Tindakan Mesin Penjadwalan |
+| :--- | :---: | :--- | :--- |
+| **Belum Bertugas (Prioritas)** | `Amber / Kuning` | $T_{\text{total}} = 0$ | **Prioritas Mutlak (Wajib H2):** Mendapat dorongan skor tertinggi ($+50.0$ poin). Sistem wajib memilih personil ini pada agenda berikutnya jika memenuhi Hard Rules. |
+| **Prioritas Weekend** | `Blue / Biru` | $T_{\text{total}} > 0 \land T_{\text{paid\_off}} = 0$ | **Prioritas Luar Hari Kerja:** Personil sudah bertugas di hari kerja namun belum pernah mendapatkan tugas weekend/libur. Sistem memprioritaskan pegawai ini ($+15.0$ poin) saat ada kegiatan hari Sabtu/Minggu/Libur Nasional. |
+| **Seimbang** | `Emerald / Hijau` | $T_{\text{total}} \ge 1 \land T_{\text{paid\_off}} \ge 1 \land T_{\text{paid}} < 3$ | **Distribusi Optimal:** Beban kerja dan perolehan honorarium berada pada kisaran rata-rata tim, memenuhi batas toleransi variansi $\le 1$ kegiatan. |
+| **Sangat Seimbang** | `Green / Hijau Tua` | $T_{\text{paid}} \ge 3$ dengan portofolio merata | **Kontribusi Maksimal Seimbang:** Personil memiliki jam terbang tinggi dengan pembagian tugas berbayar, non-berbayar, dan istirahat yang sangat teratur tanpa melanggar batas gap. |
+
+#### 3.3.3 Indeks Keseimbangan Tim / Sistem (Fairness Index Dashboard)
+Pada dashboard kalender utama, sistem menampilkan **Indeks Keseimbangan Tim (%)** secara real-time untuk memonitor apakah seluruh pegawai aktif mendapatkan beban kerja yang adil pada bulan bersangkutan.
+
+1. **Formula Perhitungan Gap Disparitas:**
+   $$\text{Fairness Gap} = \max_{p \in P_{\text{active}}}(T_{\text{total}, p}) - \min_{p \in P_{\text{active}}}(T_{\text{total}, p})$$
+   *Keterangan:* Selisih antara pegawai yang paling sering bertugas dengan pegawai yang paling sedikit bertugas dalam bulan berjalan.
+
+2. **Formula Indeks Keseimbangan (%):**
+   $$\text{Indeks Keseimbangan} = 
+   \begin{cases} 
+   96\%, & \text{jika } \text{Fairness Gap} \le 1 \\
+   \max(70\%, 100\% - (\text{Fairness Gap} \times 10\%)), & \text{jika } \text{Fairness Gap} > 1
+   \end{cases}$$
+
+3. **Klasifikasi Kesehatan Distribusi Sistem:**
+   - **Tinggi / Optimal ($\ge 90\%$)**: Disparitas tugas minimal ($\text{Fairness Gap} \le 1$). Distribusi tugas berjalan sangat adil.
+   - **Sedang / Cukup ($75\% - 89\%$)**: Terjadi deviasi wajar (misal akibat ada penugasan luar kota multi-hari). Sistem secara proaktif memprioritaskan pegawai dengan penugasan terendah.
+   - **Perlu Perhatian ($< 75\%$)**: Terdapat ketimpangan distribusi. Sistem mengaktifkan bobot relaksasi maksimal untuk meratakan penugasan.
+
+#### 3.3.4 Diagram Alur Penentuan Status Keseimbangan Individu
+
+```
+                      [Mulai Evaluasi Data Protokol Bulan Ini]
+                                         │
+                                         ▼
+                            Total Tugas Bulan Ini == 0?
+                                 ├── Ya  ──► [STATUS: Belum Bertugas (Prioritas H2)]
+                                 └── Tidak
+                                         │
+                                         ▼
+                            Tugas Weekend / Libur == 0?
+                                 ├── Ya  ──► [STATUS: Prioritas Weekend (S2)]
+                                 └── Tidak
+                                         │
+                                         ▼
+                            Total Tugas Berbayar >= 3?
+                                 ├── Ya  ──► [STATUS: Sangat Seimbang]
+                                 └── Tidak ──► [STATUS: Seimbang]
+```
+
+### 3.4 Relaksasi Bertahap (Saat Pool Pegawai Kurang)
 Jika kandidat yang lolos Hard Rules kurang dari kuota yang diminta, sistem secara otomatis merelaksasi aturan lunak secara berurutan:
 - *Tahap 1*: Relaksasi kuota distribusi S4 (rotasi) dan S3 (luar kota).
 - *Tahap 2*: Relaksasi rasio S1/S2 (keseimbangan honorarium).
 - *Tahap 3*: Relaksasi H1 Luar Kota (jika mendesak, blokir $H+1$ dilonggarkan menjadi batas jam).
 - *Tahap 4*: Jika tetap tidak mencukupi, sistem menampilkan peringatan ke Admin untuk melakukan penunjukan/override manual.
 
-### 3.4 Override Manual & Audit Trail
+### 3.5 Override Manual & Audit Trail
 - Admin berhak mengganti personil hasil auto-scheduling jika ada pegawai yang sakit/berhalangan.
 - Setiap penggantian **wajib mengisi alasan override**, dan tercatat permanen di tabel audit log.
 

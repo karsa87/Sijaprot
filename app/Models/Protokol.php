@@ -125,7 +125,7 @@ class Protokol extends Model
                         });
                 });
             },
-            // Unpaid tasks
+            // Unpaid tasks (all)
             'penugasan as tugas_unpaid' => function (Builder $q) use ($month, $year) {
                 $q->whereHas('kegiatan', function (Builder $kq) use ($month, $year) {
                     $kq->whereMonth('start_datetime', $month)
@@ -134,6 +134,63 @@ class Protokol extends Model
                         ->whereHas('jenisKegiatan', function (Builder $jq) {
                             $jq->where('payment_type', 'unpaid');
                         });
+                });
+            },
+            // Unpaid workday tasks
+            'penugasan as tugas_unpaid_workday' => function (Builder $q) use ($month, $year) {
+                $q->whereHas('kegiatan', function (Builder $kq) use ($month, $year) {
+                    $kq->whereMonth('start_datetime', $month)
+                        ->whereYear('start_datetime', $year)
+                        ->where('status', '!=', 'cancelled')
+                        ->where('is_weekend', false)
+                        ->where('is_holiday', false)
+                        ->whereHas('jenisKegiatan', function (Builder $jq) {
+                            $jq->where('payment_type', 'unpaid');
+                        });
+                });
+            },
+            // Unpaid weekend/holiday tasks
+            'penugasan as tugas_unpaid_offday' => function (Builder $q) use ($month, $year) {
+                $q->whereHas('kegiatan', function (Builder $kq) use ($month, $year) {
+                    $kq->whereMonth('start_datetime', $month)
+                        ->whereYear('start_datetime', $year)
+                        ->where('status', '!=', 'cancelled')
+                        ->where(function (Builder $wq) {
+                            $wq->where('is_weekend', true)->orWhere('is_holiday', true);
+                        })
+                        ->whereHas('jenisKegiatan', function (Builder $jq) {
+                            $jq->where('payment_type', 'unpaid');
+                        });
+                });
+            },
+            // Total workday tasks (paid + unpaid)
+            'penugasan as tugas_workday' => function (Builder $q) use ($month, $year) {
+                $q->whereHas('kegiatan', function (Builder $kq) use ($month, $year) {
+                    $kq->whereMonth('start_datetime', $month)
+                        ->whereYear('start_datetime', $year)
+                        ->where('status', '!=', 'cancelled')
+                        ->where('is_weekend', false)
+                        ->where('is_holiday', false);
+                });
+            },
+            // Total weekend/holiday tasks (paid + unpaid)
+            'penugasan as tugas_offday' => function (Builder $q) use ($month, $year) {
+                $q->whereHas('kegiatan', function (Builder $kq) use ($month, $year) {
+                    $kq->whereMonth('start_datetime', $month)
+                        ->whereYear('start_datetime', $year)
+                        ->where('status', '!=', 'cancelled')
+                        ->where(function (Builder $wq) {
+                            $wq->where('is_weekend', true)->orWhere('is_holiday', true);
+                        });
+                });
+            },
+            // Dalam kota trip count
+            'penugasan as trip_dalam_kota' => function (Builder $q) use ($month, $year) {
+                $q->whereHas('kegiatan', function (Builder $kq) use ($month, $year) {
+                    $kq->whereMonth('start_datetime', $month)
+                        ->whereYear('start_datetime', $year)
+                        ->where('status', '!=', 'cancelled')
+                        ->where('location_type', 'dalam_kota');
                 });
             },
             // Luar kota trip count
