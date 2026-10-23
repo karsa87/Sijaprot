@@ -221,11 +221,11 @@ class FormKegiatan extends Component
 
         // Kategori Hari
         if ($this->isHoliday) {
-            $this->detectedHari = 'Libur: '.($holidayName ?? 'Hari Libur Nasional');
+            $this->detectedHari = 'Libur: ' . ($holidayName ?? 'Hari Libur Nasional');
         } elseif ($this->isWeekend) {
-            $this->detectedHari = $start->isSameDay($end) ? $start->dayName.' (Weekend)' : 'Rentang Akhir Pekan (Weekend)';
+            $this->detectedHari = $start->isSameDay($end) ? $start->dayName . ' (Weekend)' : 'Rentang Akhir Pekan (Weekend)';
         } else {
-            $this->detectedHari = $start->isSameDay($end) ? $start->dayName.' (Hari Kerja)' : 'Hari Kerja Biasa';
+            $this->detectedHari = $start->isSameDay($end) ? $start->dayName . ' (Hari Kerja)' : 'Hari Kerja Biasa';
         }
 
         // Tipe Fee & Lokasi berdasarkan Template
@@ -351,7 +351,7 @@ class FormKegiatan extends Component
         // Validasi: hanya cek jika protokol pengganti sudah bertugas di kegiatan ini atau memiliki jadwal bentrok di tanggal & waktu yang sama
         $existingIds = collect($this->recommendations)
             ->pluck('protokol.id')
-            ->reject(fn ($id) => $id == $this->swapOldProtoId)
+            ->reject(fn($id) => $id == $this->swapOldProtoId)
             ->toArray();
 
         if (in_array($this->swapNewProtoId, $existingIds)) {
@@ -391,7 +391,7 @@ class FormKegiatan extends Component
     public function removeProtocolFromList(int $protoId): void
     {
         $this->recommendations = collect($this->recommendations)
-            ->filter(fn ($r) => $r['protokol']['id'] != $protoId)
+            ->filter(fn($r) => $r['protokol']['id'] != $protoId)
             ->values()
             ->toArray();
 
@@ -423,9 +423,9 @@ class FormKegiatan extends Component
         $proto = Protokol::findOrFail($this->manualProtoId);
         $tempKegiatan = $this->buildTemporaryKegiatan();
 
-        // BUG-01 Fix: Validasi seluruh Hard Rules (H1, H2, H3) sebelum penambahan manual
-        if (! $gapChecker->passesAllHardRules($proto, $tempKegiatan)) {
-            $this->addError('manualProtoId', "Pegawai {$proto->name} tidak memenuhi Hard Rules (mengalami bentrok jadwal atau jeda istirahat kurang).");
+        // Validasi: hanya cek jika protokol yang ditambahkan memiliki jadwal bentrok di tanggal & waktu yang sama
+        if ($gapChecker->hasDirectOverlap($proto, $tempKegiatan)) {
+            $this->addError('manualProtoId', "Pegawai {$proto->name} sudah memiliki jadwal kegiatan lain di tanggal dan waktu yang sama.");
 
             return;
         }
@@ -545,13 +545,13 @@ class FormKegiatan extends Component
         // Personil yang tersedia untuk ditukar (mengecualikan yang sudah terpilih, kecuali yang sedang diganti)
         $excludedForSwap = array_diff($selectedIds, [$this->swapOldProtoId ?? 0]);
         $availableProtokolsForSwap = Protokol::active()
-            ->when(! empty($excludedForSwap), fn ($q) => $q->whereNotIn('id', $excludedForSwap))
+            ->when(! empty($excludedForSwap), fn($q) => $q->whereNotIn('id', $excludedForSwap))
             ->orderBy('name')
             ->get();
 
         // Personil yang tersedia untuk ditambahkan manual (mengecualikan semua yang sudah ada di list)
         $availableProtokolsForAdd = Protokol::active()
-            ->when(! empty($selectedIds), fn ($q) => $q->whereNotIn('id', $selectedIds))
+            ->when(! empty($selectedIds), fn($q) => $q->whereNotIn('id', $selectedIds))
             ->orderBy('name')
             ->get();
 

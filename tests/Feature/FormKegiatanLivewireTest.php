@@ -437,4 +437,68 @@ class FormKegiatanLivewireTest extends TestCase
             ->assertHasErrors(['swapNewProtoId'])
             ->assertSet('showSwapModal', true);
     }
+
+    public function test_add_manual_protocol_allows_gap_violation_but_rejects_direct_overlap(): void
+    {
+        $this->actingAs($this->admin);
+
+        // Andi selesai bertugas 12 jam yang lalu (melanggar H1 / jeda 24 jam, tetapi TIDAK bentrok di jam tugas baru)
+        $tugasKemarin = Kegiatan::create([
+            'jenis_kegiatan_id' => $this->jenisDalamKota->id,
+            'title' => 'Tugas Kemarin Malam',
+            'start_datetime' => '2026-10-24 18:00:00',
+            'end_datetime' => '2026-10-24 22:00:00',
+            'jumlah_protokol' => 1,
+            'location_type' => LocationType::DALAM_KOTA->value,
+            'status' => 'scheduled',
+        ]);
+        Penugasan::create([
+            'kegiatan_id' => $tugasKemarin->id,
+            'protokol_id' => $this->andi->id,
+            'assigned_at' => now(),
+        ]);
+
+        // Fajar memiliki tugas yang persis bersamaan dengan tugas baru (2026-10-25 10:00 - 12:00)
+        $fajar = Protokol::create(['name' => 'Fajar Pratama', 'phone_wa' => '083333', 'status' => ProtokolStatus::ACTIVE]);
+        $tugasBentrok = Kegiatan::create([
+            'jenis_kegiatan_id' => $this->jenisDalamKota->id,
+            'title' => 'Tugas Bersamaan',
+            'start_datetime' => '2026-10-25 10:00:00',
+            'end_datetime' => '2026-10-25 12:00:00',
+            'jumlah_protokol' => 1,
+            'location_type' => LocationType::DALAM_KOTA->value,
+            'status' => 'scheduled',
+        ]);
+        Penugasan::create([
+            'kegiatan_id' => $tugasBentrok->id,
+            'protokol_id' => $fajar->id,
+            'assigned_at' => now(),
+        ]);
+
+        $test = Livewire::test(FormKegiatan::class)
+            ->set('title' , 'Tugas Baru Hari Ini')
+            ->set('jenis_kegiatan_id', $this->jenisDalamKota->id)
+            ->set('jumlah_protokol', 1)
+            ->set('start_date', '2026-10-25')
+            ->set('start_time', '10:00')
+            ->set('end_date', '2026-10-25')
+            ->set('end_time', '12:00');
+
+        // 1. Tambah Andi secara manual (melanggar jeda 24 jam H1, tapi TIDAK bentrok jadwal langsung) -> HARUS DIIZINKAN
+        $test->call('openAddManualModal')
+            ->set('manualProtoId', $this->andi->id)
+            ->set('manualReason', 'Penugasan khusus manual')
+            ->call('addManualProtocol')
+            ->assertHasNoErrors()
+            ->assertSet('showAddManualModal', false)
+            ->assertSee('Andi Prasetyo');
+
+        // 2. Coba tambah Fajar secara manual (bentrok waktu langsung di jam yang sama) -> HARUS DITOLAK
+        $test->call('openAddManualModal')
+            ->set('manualProtoId', $fajar->id)
+            ->set('manualReason', 'Coba tambah Fajar yang bentrok')
+            ->call('addManualProtocol')
+            ->assertHasErrors(['manualProtoId'])
+            ->assertSet('showAddManualModal', true);
+    }
 }
