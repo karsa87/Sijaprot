@@ -151,7 +151,7 @@
                 <th style="width: 75px;">No. WhatsApp</th>
                 <th style="width: 50px;">Dibayar (Kerja)</th>
                 <th style="width: 50px;">Dibayar (Libur)</th>
-                <th style="width: 45px;">Free</th>
+                <th style="width: 45px;">Tidak Dibayar</th>
                 <th style="width: 50px;">Luar Kota</th>
                 <th style="width: 45px;">Total</th>
                 <th style="width: 75px;">Status Keseimbangan</th>
