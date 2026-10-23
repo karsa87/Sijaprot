@@ -358,7 +358,6 @@ class FormKegiatanLivewireTest extends TestCase
     {
         $this->actingAs($this->admin);
 
-        // Jumat 23 Okt s.d. Minggu 25 Okt 2026
         Livewire::test(FormKegiatan::class)
             ->set('jenis_kegiatan_id', $this->jenisDalamKota->id)
             ->set('start_date', '2026-10-23') // Jumat (Hari kerja biasa)
@@ -366,5 +365,76 @@ class FormKegiatanLivewireTest extends TestCase
             ->call('updateAutoDetection')
             ->assertSet('isWeekend', true)
             ->assertSet('detectedFee', 'Dibayar (Luar Hari Kerja)');
+    }
+
+    public function test_apply_swap_protocol_allows_gap_violation_but_rejects_direct_overlap(): void
+    {
+        $this->actingAs($this->admin);
+
+        // Andi selesai bertugas 12 jam yang lalu (melanggar H1 / jeda 24 jam, tetapi TIDAK bentrok di jam tugas baru)
+        $tugasKemarin = Kegiatan::create([
+            'jenis_kegiatan_id' => $this->jenisDalamKota->id,
+            'title' => 'Tugas Kemarin Malam',
+            'start_datetime' => '2026-10-24 18:00:00',
+            'end_datetime' => '2026-10-24 22:00:00',
+            'jumlah_protokol' => 1,
+            'location_type' => LocationType::DALAM_KOTA->value,
+            'status' => 'scheduled',
+        ]);
+        Penugasan::create([
+            'kegiatan_id' => $tugasKemarin->id,
+            'protokol_id' => $this->andi->id,
+            'assigned_at' => now(),
+        ]);
+
+        // Fajar memiliki tugas yang persis bersamaan dengan tugas baru (2026-10-25 10:00 - 12:00)
+        $fajar = Protokol::create(['name' => 'Fajar Pratama', 'phone_wa' => '083333', 'status' => ProtokolStatus::ACTIVE]);
+        $tugasBentrok = Kegiatan::create([
+            'jenis_kegiatan_id' => $this->jenisDalamKota->id,
+            'title' => 'Tugas Bersamaan',
+            'start_datetime' => '2026-10-25 10:00:00',
+            'end_datetime' => '2026-10-25 12:00:00',
+            'jumlah_protokol' => 1,
+            'location_type' => LocationType::DALAM_KOTA->value,
+            'status' => 'scheduled',
+        ]);
+        Penugasan::create([
+            'kegiatan_id' => $tugasBentrok->id,
+            'protokol_id' => $fajar->id,
+            'assigned_at' => now(),
+        ]);
+
+        $test = Livewire::test(FormKegiatan::class)
+            ->set('title', 'Tugas Baru Hari Ini')
+            ->set('jenis_kegiatan_id' , $this->jenisDalamKota->id)
+            ->set('jumlah_protokol', 1)
+            ->set('start_date', '2026-10-25')
+            ->set('start_time', '10:00')
+            ->set('end_date', '2026-10-25')
+            ->set('end_time', '12:00');
+
+        // Tambah Dewi ke list tugas
+        $test->call('openAddManualModal')
+            ->set('manualProtoId', $this->dewi->id)
+            ->set('manualReason', 'Tugas awal')
+            ->call('addManualProtocol')
+            ->assertSet('showAddManualModal', false);
+
+        // 1. Swap Dewi ke Andi (melanggar jeda 24 jam H1, tapi TIDAK bentrok jadwal langsung) -> HARUS DIIZINKAN
+        $test->call('openSwapModal', $this->dewi->id)
+            ->set('swapNewProtoId', $this->andi->id)
+            ->set('swapReason', 'Disposisi khusus pimpinan')
+            ->call('applySwapProtocol')
+            ->assertHasNoErrors()
+            ->assertSet('showSwapModal', false)
+            ->assertSee('Andi Prasetyo');
+
+        // 2. Swap Andi ke Fajar (bentrok waktu langsung di jam yang sama) -> HARUS DITOLAK
+        $test->call('openSwapModal', $this->andi->id)
+            ->set('swapNewProtoId', $fajar->id)
+            ->set('swapReason', 'Coba ganti ke Fajar yang bentrok')
+            ->call('applySwapProtocol')
+            ->assertHasErrors(['swapNewProtoId'])
+            ->assertSet('showSwapModal', true);
     }
 }

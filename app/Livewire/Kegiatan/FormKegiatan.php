@@ -348,9 +348,20 @@ class FormKegiatan extends Component
         $newProto = Protokol::findOrFail($this->swapNewProtoId);
         $tempKegiatan = $this->buildTemporaryKegiatan();
 
-        // BUG-01 Fix: Validasi seluruh Hard Rules (H1, H2, H3) sebelum membolehkan swap
-        if (! $gapChecker->passesAllHardRules($newProto, $tempKegiatan)) {
-            $this->addError('swapNewProtoId', "Pegawai {$newProto->name} tidak memenuhi Hard Rules (mengalami bentrok jadwal atau jeda istirahat kurang).");
+        // Validasi: hanya cek jika protokol pengganti sudah bertugas di kegiatan ini atau memiliki jadwal bentrok di tanggal & waktu yang sama
+        $existingIds = collect($this->recommendations)
+            ->pluck('protokol.id')
+            ->reject(fn ($id) => $id == $this->swapOldProtoId)
+            ->toArray();
+
+        if (in_array($this->swapNewProtoId, $existingIds)) {
+            $this->addError('swapNewProtoId', "Pegawai {$newProto->name} sudah ada dalam susunan tugas kegiatan ini.");
+
+            return;
+        }
+
+        if ($gapChecker->hasDirectOverlap($newProto, $tempKegiatan)) {
+            $this->addError('swapNewProtoId', "Pegawai {$newProto->name} sudah memiliki jadwal kegiatan lain di tanggal dan waktu yang sama.");
 
             return;
         }
