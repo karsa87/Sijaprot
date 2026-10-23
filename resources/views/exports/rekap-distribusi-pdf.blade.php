@@ -169,7 +169,7 @@
                         $statusLabel = 'Belum Tugas';
                     } elseif ($p->tugas_dibayar_offday == 0) {
                         $statusClass = 'badge-warn';
-                        $statusLabel = 'Prioritas Libur';
+                        $statusLabel = 'Prioritas Weekend';
                     } elseif ($paid >= 3) {
                         $statusClass = 'badge-optimal';
                         $statusLabel = 'Sangat Seimbang';
