@@ -142,4 +142,39 @@ class DistributionScorerTest extends TestCase
         // Skor Andi harus lebih tinggi dari Dewi pada kegiatan Kunker
         $this->assertGreaterThan($scoreDewi['score'], $scoreAndi['score']);
     }
+
+    public function test_overwork_penalty_applies_when_weekend_duties_reach_threshold(): void
+    {
+        // Beri Dewi 3 tugas weekend di bulan Oktober
+        for ($i = 1; $i <= 3; $i++) {
+            $keg = Kegiatan::create([
+                'jenis_kegiatan_id' => $this->jenis->id,
+                'title' => "Tugas Weekend {$i}",
+                'start_datetime' => "2026-10-0{$i} 09:00:00",
+                'end_datetime' => "2026-10-0{$i} 12:00:00",
+                'is_weekend' => true,
+                'status' => 'scheduled',
+            ]);
+            Penugasan::create([
+                'kegiatan_id' => $keg->id,
+                'protokol_id' => $this->dewi->id,
+                'assigned_at' => "2026-10-0{$i} 09:00:00",
+            ]);
+        }
+
+        $activePool = collect([$this->dewi, $this->andi]);
+        $this->scorer->computeTeamAverages($activePool, 10, 2026);
+
+        $kegiatanBaru = new Kegiatan([
+            'jenis_kegiatan_id' => $this->jenis->id,
+            'title' => 'Tugas Tambahan',
+            'start_datetime' => '2026-10-28 09:00:00',
+            'end_datetime' => '2026-10-28 12:00:00',
+        ]);
+
+        $scoreDewi = $this->scorer->calculateScore($this->dewi, $kegiatanBaru);
+
+        $this->assertEquals(-40.0, $scoreDewi['breakdown']['overwork_penalty']);
+        $this->assertStringContainsString('Status Overwork', $scoreDewi['reason']);
+    }
 }

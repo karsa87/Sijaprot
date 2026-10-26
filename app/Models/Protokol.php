@@ -28,6 +28,7 @@ class Protokol extends Model
 
     protected $appends = [
         'status_keseimbangan',
+        'level_beban',
     ];
 
     protected function casts(): array
@@ -324,5 +325,20 @@ class Protokol extends Model
     public function getStatusKeseimbanganTextAttribute(): string
     {
         return $this->status_keseimbangan['label'];
+    }
+
+    /**
+     * Get or set dynamic workload level evaluation (PRD v2.0 Section 7).
+     *
+     * @return array{level: string, label: string, badge: string, class: string, pdf_badge: string, dot_color: string, reasons: array, diagnosa: string}|null
+     */
+    public function getLevelBebanAttribute(): ?array
+    {
+        return $this->attributes['level_beban'] ?? null;
+    }
+
+    public function setLevelBebanAttribute(?array $value): void
+    {
+        $this->attributes['level_beban'] = $value;
     }
 }

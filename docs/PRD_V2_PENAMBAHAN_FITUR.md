@@ -14,7 +14,8 @@ Berdasarkan evaluasi operasional Bagian Protokol Kemendikdasmen RI, terdapat keb
 2. **Kategori Pembayaran Lebih Realistis**: Penganggaran acara kementerian kerap memiliki status kepastian honorarium yang bersifat tentatif, sehingga diperlukan status **"Kemungkinan Dibayar"** selain "Dibayar" dan "Tidak Dibayar".
 3. **Pembedaan Tugas Kunjungan Kerja (Kunker)**: Kunjungan kerja pimpinan memiliki beban fisik, durasi, dan kehormatan dinas yang berbeda signifikan dari acara seremonial biasa.
 4. **Penerapan Kebijakan Kerja *Work From Anywhere* (WFA) Hari Jum'at**: Perlindungan hak WFA dan rotasi yang adil agar personil yang bertugas saat WFA Jum'at tidak terbebani di akhir pekan (*weekend fatigue guard*).
-5. **Pembaruan Formula Keseimbangan & Laporan**: Format pelaporan dinas disederhanakan dan difokuskan pada 7 metrik pokok kedinasan.
+5. **Pembaruan Format Laporan Rekapitulasi**: Disederhanakan dan difokuskan pada 7 metrik pokok kedinasan serta dilengkapi rincian agenda Kunker (tanpa NIP).
+6. **Sistem Leveling Beban Kerja & Status Keseimbangan Tim**: Klasifikasi otomatis pegawai (*Overwork*, *Seimbang*, *Harus Ditugaskan*) serta evaluasi kesehatan distribusi tim secara makro berbasis *Fairness Index*.
 
 ---
 
@@ -33,6 +34,8 @@ Berdasarkan evaluasi operasional Bagian Protokol Kemendikdasmen RI, terdapat keb
 │                                │ • Target Min 1x Kunker per bulan           │
 │                                │ • Multidimensi Scoring (6 Variabel)        │
 │ 6. Format Laporan Baru         │ 7 Metrik Spesifik (Web, Excel, PDF)        │
+│ 7. Leveling Beban & Status Tim │ • 3 Level: Overwork, Seimbang, Ditugaskan  │
+│                                │ • Indikator Status Keseimbangan Tim (Gini) │
 └────────────────────────────────┴────────────────────────────────────────────┘
 ```
 
@@ -194,6 +197,140 @@ Berlaku konsisten dan sinkron pada 3 modul:
 
 ---
 
+### FITUR 7: Sistem Leveling Beban Kerja Pegawai & Status Keseimbangan Tim
+
+#### 7.1 Latar Belakang & Tujuan
+Untuk memudahkan pimpinan dan operator dalam mengevaluasi keadilan penugasan secara cepat dan mengambil keputusan manajerial yang tepat, sistem menyediakan klasifikasi **Level Beban Kerja Individu** (*Overwork*, *Seimbang*, *Harus Ditugaskan*) serta **Status Keseimbangan Tim** secara kolektif pada setiap periode bulanan.
+
+---
+
+#### 7.2 Klasifikasi 3 Level Beban Kerja Individu (Per Pegawai)
+
+Status individu ditentukan secara otomatis dengan membandingkan riwayat tugas pegawai terhadap **Rata-rata Tim ($\mu_{\text{tugas}}$)** dan kepatuhan terhadap **Hard Rules** kedinasan pada bulan berjalan:
+
+$$\mu_{\text{tugas}} = \frac{\sum_{p \in P_{\text{active}}} T_{\text{total}, p}}{|P_{\text{active}}|}$$
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│                      3 LEVEL STATUS BEBAN KERJA PROTOKOL                         │
+├─────────────────────┬───────────────────┬────────────────────────────────────────┤
+│ LEVEL STATUS        │ WARNA BADGE       │ INDIKATOR / KRITERIA KELAYAKAN         │
+├─────────────────────┼───────────────────┼────────────────────────────────────────┤
+│ 1. OVERWORK         │ 🔴 Merah (Rose)   │ Kelebihan Beban & Berisiko Kelelahan   │
+│ 2. SEIMBANG         │ 🟢 Hijau (Emerald)│ Beban Proporsional & Memenuhi Target   │
+│ 3. HARUS DITUGASKAN │ 🟡 Kuning (Amber) │ Kekurangan Beban / Belum Memenuhi Hak  │
+└─────────────────────┴───────────────────┴────────────────────────────────────────┘
+```
+
+##### A. Level 1: OVERWORK (🔴 Merah / Rose — Kelebihan Beban / Butuh Istirahat)
+Terpicu jika personil memenuhi **salah satu atau lebih** kondisi berikut:
+1. **Volume Tugas Melampaui Batas**: $T_{\text{total}} \ge \mu_{\text{tugas}} + 2$ (melebihi rata-rata tim sebanyak 2 kegiatan atau lebih).
+2. **Kelelahan Akhir Pekan (Over-Weekend)**: Bertugas pada hari libur/weekend $\ge 3$ kali dalam satu bulan ($T_{\text{weekend}} \ge 3$).
+3. **Kelebihan Kunker**: Melakukan Kunjungan Kerja $\ge 3$ kali dalam sebulan ($T_{\text{kunker}} \ge 3$) sementara masih ada rekan lain dalam tim yang $T_{\text{kunker}} = 0$.
+4. **WFA-Weekend Spike**: Bertugas pada hari Jum'at WFA dan akhir pekannya terisi kegiatan lapangan.
+> **Intervensi Algoritma:** Pegawai berstatus *Overwork* otomatis **diberi penalti nilai rekomendasi / direm** oleh mesin penjadwalan agar tidak terpilih pada kegiatan baru berikutnya, memberi ruang istirahat penuh (*fatigue prevention*).
+
+##### B. Level 3: HARUS DITUGASKAN (🟡 Kuning / Amber — Prioritas Utama Penugasan)
+Terpicu jika personil memenuhi **salah satu atau lebih** kondisi kekurangan beban atau hak berikut:
+1. **Nol Tugas (Prioritas Mutlak)**: Belum pernah bertugas sama sekali di bulan berjalan ($T_{\text{total}} = 0$).
+2. **Volume Tugas Rendah**: $T_{\text{total}} \le \mu_{\text{tugas}} - 2$ (tertinggal jauh dari rata-rata tim).
+3. **Belum Pernah Kunker**: Total Kunker bulan ini masih $0\text{x}$ ($T_{\text{kunker}} = 0$), padahal aturan mewajibkan minimal 1x Kunker per bulan.
+4. **Kesenjangan Pembayaran**: Belum pernah mendapatkan kegiatan Dibayar atau Kemungkinan Dibayar ($T_{\text{paid}} + T_{\text{conditional}} = 0$), sementara rekan-rekan lain rata-rata sudah mendapatkan $\ge 2$ kegiatan berbayar.
+5. **Belum Piket WFA**: Belum pernah bertugas pada hari Jum'at WFA pada siklus rotasi berjalan.
+> **Intervensi Algoritma:** Pegawai berstatus *Harus Ditugaskan* otomatis mendapatkan **bobot dorongan prioritas tertinggi ($+35$ hingga $+50$ poin)** di mesin auto-scheduling sehingga langsung menempati peringkat teratas rekomendasi.
+
+##### C. Level 2: SEIMBANG (🟢 Hijau / Emerald — Beban Ideal / Optimal)
+Terpicu jika kondisi dinas pegawai berada dalam rentang sehat dan proporsional:
+1. Total tugas berada dalam deviasi wajar dari rata-rata tim: $|T_{\text{total}} - \mu_{\text{tugas}}| \le 1$.
+2. Target minimal bertugas tercapai ($T_{\text{total}} \ge 1$).
+3. Target minimal Kunker bulanan tercapai ($T_{\text{kunker}} \ge 1$).
+4. Rasio penugasan hari kerja (*weekday*) vs hari libur (*weekend*) seimbang dan tidak melanggar waktu istirahat.
+
+---
+
+#### 7.3 Status Keseimbangan Tim (Kolektif 1 Tim)
+
+Untuk mengetahui kesehatan keadilan 1 tim protokol secara makro, sistem mengukur **Disparitas / Kesenjangan Beban (Fairness Gap)**:
+
+$$\text{Fairness Gap} = \max_{p \in P_{\text{active}}}(T_{\text{total}, p}) - \min_{p \in P_{\text{active}}}(T_{\text{total}, p})$$
+
+$$\text{Indeks Keseimbangan Tim (\%)} = 
+\begin{cases} 
+100\%, & \text{jika } \text{Fairness Gap} \le 1 \\
+\max(60\%, 100\% - (\text{Fairness Gap} \times 10\%)), & \text{jika } \text{Fairness Gap} > 1
+\end{cases}$$
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│                      3 STATUS KESEHATAN KESEIMBANGAN TIM                         │
+├─────────────────────┬──────────────┬─────────────────────────────────────────────┤
+│ STATUS TIM          │ INDEKS (%)   │ PENJELASAN KONDISI DISTRIBUSI TIM           │
+├─────────────────────┼──────────────┼─────────────────────────────────────────────┤
+│ 🟢 SANGAT SEIMBANG  │ 90% – 100%   │ Beban terbagi rata (selisih max-min ≤ 1),   │
+│                     │              │ tidak ada overwork, semua sudah kunker.     │
+│ 🟡 CUKUP SEIMBANG   │ 75% – 89%    │ Selisih tugas 2–3 (wajar karena agenda      │
+│                     │              │ kunker multi-hari), rotasi berjalan normal. │
+│ 🔴 PERLU PEMERATAAN │ < 75%        │ Tim timpang! Ada personil overwork sementara│
+│    (TIDAK SEIMBANG) │              │ personil lain masih 0 tugas / belum kunker. │
+└─────────────────────┴──────────────┴─────────────────────────────────────────────┘
+```
+
+---
+
+#### 7.4 Studi Kasus & Simulasi Nyata
+
+* **Kondisi Tim**: 5 Protokol Aktif (Budi, Siti, Fauzi, Dewi, Rian).
+* **Total Penugasan Berjalan**: 20 Kegiatan $\rightarrow$ **Rata-rata Tim ($\mu_{\text{tugas}}$)** = $\mathbf{4\text{ tugas per orang}}$.
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                        SIMULASI REKAPITULASI & LEVELING KESEIMBANGAN TIM                               │
+├────┬────────────────────┬──────────┬──────────┬──────────────────────┬───────┬─────────┬─────────┬───────┤
+│ NO │   NAMA PROTOKOL    │ TIDAK    │ DIBAYAR /│        KUNKER        │  WFA  │ HARI    │ HARI    │ TOTAL │
+│    │                    │ DIBAYAR  │ KEMUNGK. │    (TOTAL & LIST)    │ (JUM) │ WEEKEND │ WEEKDAY │ TUGAS │
+├────┼────────────────────┼──────────┼──────────┼──────────────────────┼───────┼─────────┼─────────┼───────┤
+│ 1  │ Budi Pratama       │    2x    │    5x    │ 3x (Solo, Bali, Mdn) │  1x   │   3x    │   4x    │  7x   │
+│    │ STATUS: 🔴 OVERWORK — [Beban > Rata-rata (+3), Weekend Tinggi (3x), Kunker 3x]                    │
+├────┼────────────────────┼──────────┼──────────┼──────────────────────┼───────┼─────────┼─────────┼───────┤
+│ 2  │ Siti Rahma         │    1x    │    3x    │ 1x (Surabaya)        │  1x   │   1x    │   3x    │  4x   │
+│    │ STATUS: 🟢 SEIMBANG — [Beban Ideal Sesuai Rata-rata (4x), Target Kunker Terpenuhi]                │
+├────┼────────────────────┼──────────┼──────────┼──────────────────────┼───────┼─────────┼─────────┼───────┤
+│ 3  │ Ahmad Fauzi        │    2x    │    2x    │ 1x (Bandung)         │  1x   │   1x    │   3x    │  4x   │
+│    │ STATUS: 🟢 SEIMBANG — [Beban Ideal Sesuai Rata-rata (4x), Target Kunker Terpenuhi]                │
+├────┼────────────────────┼──────────┼──────────┼──────────────────────┼───────┼─────────┼─────────┼───────┤
+│ 4  │ Dewi Lestari       │    3x    │    1x    │ 0x (Belum Ada)       │  1x   │   1x    │   3x    │  4x   │
+│    │ STATUS: 🟡 HARUS DITUGASKAN — [⚠️ Belum Pernah Kunker (0x), Honorarium Minim (1x)]                │
+├────┼────────────────────┼──────────┼──────────┼──────────────────────┼───────┼─────────┼─────────┼───────┤
+│ 5  │ Rian Hidayat       │    1x    │    0x    │ 0x (Belum Ada)       │  0x   │   0x    │   1x    │  1x   │
+│    │ STATUS: 🟡 HARUS DITUGASKAN — [⚠️ Jam Terbang Tertinggal (-3), Belum Kunker, Belum Honor]         │
+└────┴────────────────────┴──────────┴──────────┴──────────────────────┴───────┴─────────┴─────────┴───────┘
+```
+
+##### Evaluasi Status Keseimbangan Tim Kasus di Atas:
+* Tugas Terbanyak = 7x (Budi), Tugas Tersedikit = 1x (Rian) $\rightarrow$ $\text{Fairness Gap} = 7 - 1 = \mathbf{6\text{ tugas}}$.
+* $\text{Indeks Keseimbangan Tim} = 100\% - (6 \times 10\%) = \mathbf{40\% \quad (\text{Skor: } 60\%)}$.
+* **Banner Ringkasan Header Laporan**:
+  ```
+  [STATUS TIM: 🔴 PERLU PEMERATAAN (Indeks: 60%)]
+  Ringkasan: 1 Overwork | 2 Seimbang | 2 Harus Ditugaskan
+  Diagnosa: Beban Budi Pratama melampaui batas (+3), sementara Dewi dan Rian belum pernah Kunker.
+  ```
+
+---
+
+#### 7.5 Tampilan Antarmuka & Output (Web, Excel, PDF)
+1. **Halaman Web Inertia/Vue (`RekapDistribusi.vue`)**:
+   - Header memuat **Card Status Keseimbangan Tim** dengan indikator warna, skor persentase, dan diagnosa singkat.
+   - Kolom terakhir tabel memuat badge dinamis: `🔴 Overwork`, `🟢 Seimbang`, `🟡 Harus Ditugaskan` lengkap dengan tooltip alasan.
+2. **Ekspor Microsoft Excel (`RekapDistribusiExport.php`)**:
+   - Baris 4 memuat ringkasan Status Keseimbangan Tim dan Indeks Fairness.
+   - Kolom 'Status Beban' dan 'Catatan Diagnosa' menyajikan status level tiap personil.
+3. **Ekspor Cetak Adobe PDF (`rekap-distribusi-pdf.blade.php`)**:
+   - Kotak ringkasan eksekutif Status Keseimbangan Tim di bawah judul dokumen.
+   - Kolom status level ber-badge warna formal untuk arsip pimpinan.
+
+---
+
 ## 3. Perubahan Skema Database (Database Migrations)
 
 Untuk mendukung performa tinggi pada skala data besar (hingga 200 juta baris penugasan):
@@ -239,10 +376,16 @@ Untuk menjaga kualitas kode, kebersihan arsitektur, dan stabilitas aplikasi, pen
   - Implementasi Hard Rule: *WFA-to-Weekend Guard* (blokir Sabtu/Minggu jika bertugas WFA Jum'at).
   - Implementasi *Rotasi WFA Antar-Minggu* & *Target Min 1x Kunker*.
   - Pembaruan rumus *Multidimensi Scoring* pada `DistributionScorer.php`.
-* **Tahap 4: Penyesuaian Laporan Rekapitulasi & Ekspor (Excel & PDF)**
+* **Tahap 4: Penyesuaian Laporan Rekapitulasi, Leveling & Ekspor (Excel & PDF)**
   - Update query rekapitulasi `Protokol::withMonthlyMetrics()` dan eager-load / aggregate riwayat kegiatan Kunker per protokol pada bulan terkait.
-  - Penyesuaian tabel Vue 3 Inertia `resources/js/Pages/Laporan/RekapDistribusi.vue` (tanpa NIP, 7 metrik, dan daftar kegiatan kunker pada kolom Kunker).
-  - Penyesuaian `RekapDistribusiExport.php` (Excel tanpa NIP, rincian list Kunker di cell Kunker) dan `resources/views/exports/rekap-distribusi-pdf.blade.php`.
+  - Implementasi fungsi kalkulator Status Keseimbangan Individu (*Overwork*, *Seimbang*, *Harus Ditugaskan*) dan Status Keseimbangan Tim (Fairness Index).
+  - Penyesuaian antarmuka Vue 3 Inertia `resources/js/Pages/Laporan/RekapDistribusi.vue`:
+    * Tanpa kolom NIP.
+    * 7 metrik pokok.
+    * Kolom Kunker menampilkan total + list agenda.
+    * Card Status Keseimbangan Tim di bagian atas.
+    * Kolom badge Level Status Beban Kerja per pegawai.
+  - Penyesuaian `RekapDistribusiExport.php` (Excel) dan `resources/views/exports/rekap-distribusi-pdf.blade.php`.
   - Pembuatan automated test menyeluruh (Unit & Feature Tests).
 
 ---
@@ -257,4 +400,6 @@ Untuk menjaga kualitas kode, kebersihan arsitektur, dan stabilitas aplikasi, pen
 6. ✅ Protokol yang bertugas di Jum'at WFA tidak dapat bertugas di WFA minggu berikutnya selama masih ada personil lain yang belum pernah tugas WFA.
 7. ✅ Protokol yang belum pernah Kunker bulan berjalan mendapat prioritas utama saat ada agenda Kunker.
 8. ✅ Laporan rekapitulasi (Web, Excel, dan PDF) bersih dari kolom NIP, menampilkan tepat 7 metrik, serta menyajikan jumlah dan rincian agenda Kunker yang diikuti protokol.
-9. ✅ Seluruh automated tests lulus 100%.
+9. ✅ Sistem mengklasifikasikan beban kerja individu secara otomatis ke dalam 3 level: **Overwork** (merah), **Seimbang** (hijau), atau **Harus Ditugaskan** (kuning) berdasarkan perbandingan terhadap rata-rata tim dan target minimal kedinasan.
+10. ✅ Sistem menghitung **Status Keseimbangan Tim** secara kolektif (Sangat Seimbang, Cukup Seimbang, atau Perlu Pemerataan) dengan visualisasi yang jelas pada Web, Excel, dan PDF.
+11. ✅ Seluruh automated tests lulus 100%.

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Exports\RekapDistribusiExport;
 use App\Models\Protokol;
+use App\Services\Scheduling\WorkloadLevelingService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -41,8 +42,16 @@ class LaporanExportController extends Controller
             ->orderBy('name')
             ->get();
 
+        $levelingService = app(WorkloadLevelingService::class);
+        $teamFairness = $levelingService->evaluateTeam($protokols);
+
+        foreach ($protokols as $p) {
+            $p->level_beban = $teamFairness['evaluations'][$p->id] ?? null;
+        }
+
         $pdf = Pdf::loadView('exports.rekap-distribusi-pdf', [
             'protokols' => $protokols,
+            'teamFairness' => $teamFairness,
             'month' => $month,
             'year' => $year,
             'monthName' => $monthName,

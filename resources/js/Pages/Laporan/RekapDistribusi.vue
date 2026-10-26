@@ -8,6 +8,10 @@ const props = defineProps({
         type: Array,
         required: true,
     },
+    teamFairness: {
+        type: Object,
+        default: () => null,
+    },
     selectedMonth: {
         type: Number,
         required: true,
@@ -156,6 +160,61 @@ const monthOptions = [
                     </div>
                 </div>
 
+                <!-- Card Status Keseimbangan Tim (PRD v2.0 Fitur 7) -->
+                <div
+                    v-if="teamFairness"
+                    class="mt-6 p-4 rounded-xl border flex flex-col md:flex-row md:items-center md:justify-between gap-4 transition-all"
+                    :class="[
+                        teamFairness.status === 'sangat_seimbang' ? 'bg-emerald-50/70 border-emerald-200' :
+                        teamFairness.status === 'cukup_seimbang' ? 'bg-amber-50/70 border-amber-200' :
+                        'bg-rose-50/70 border-rose-200'
+                    ]"
+                >
+                    <div class="flex items-start space-x-3.5">
+                        <div
+                            class="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 shadow-2xs font-extrabold text-sm"
+                            :class="[
+                                teamFairness.status === 'sangat_seimbang' ? 'bg-emerald-600 text-white' :
+                                teamFairness.status === 'cukup_seimbang' ? 'bg-amber-500 text-white' :
+                                'bg-rose-600 text-white'
+                            ]"
+                        >
+                            {{ teamFairness.indeks }}%
+                        </div>
+                        <div>
+                            <div class="flex items-center space-x-2">
+                                <span class="text-xs font-bold uppercase tracking-wider text-slate-500">
+                                    Status Keseimbangan Tim:
+                                </span>
+                                <span
+                                    class="px-2 py-0.5 rounded-full text-xs font-extrabold border"
+                                    :class="teamFairness.badge_class"
+                                >
+                                    {{ teamFairness.status_label }}
+                                </span>
+                            </div>
+                            <p class="text-xs text-slate-700 mt-1 font-medium">
+                                {{ teamFairness.diagnosa_text }}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-2 shrink-0 text-xs">
+                        <span class="px-2.5 py-1 rounded-lg bg-white border border-rose-200 text-rose-700 font-bold shadow-2xs flex items-center space-x-1.5">
+                            <span class="w-2 h-2 rounded-full bg-rose-500 inline-block"></span>
+                            <span>{{ teamFairness.counts?.overwork || 0 }} Overwork</span>
+                        </span>
+                        <span class="px-2.5 py-1 rounded-lg bg-white border border-emerald-200 text-emerald-700 font-bold shadow-2xs flex items-center space-x-1.5">
+                            <span class="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+                            <span>{{ teamFairness.counts?.seimbang || 0 }} Seimbang</span>
+                        </span>
+                        <span class="px-2.5 py-1 rounded-lg bg-white border border-amber-200 text-amber-700 font-bold shadow-2xs flex items-center space-x-1.5">
+                            <span class="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
+                            <span>{{ teamFairness.counts?.harus_ditugaskan || 0 }} Ditugaskan</span>
+                        </span>
+                    </div>
+                </div>
+
                 <!-- 7-Metric Standard Table (PRD v2.0 Compliant - Tanpa NIP) -->
                 <div class="overflow-x-auto mt-4">
                     <table class="w-full text-left text-xs">
@@ -186,7 +245,7 @@ const monthOptions = [
                                     Total Tugas
                                 </th>
                                 <th class="px-3 py-3 text-center">
-                                    Status Keseimbangan
+                                    Status Beban Kerja
                                 </th>
                             </tr>
                         </thead>
@@ -309,18 +368,33 @@ const monthOptions = [
                                     </span>
                                 </td>
                                 <td class="px-3 py-3.5 text-center">
-                                    <span
-                                        class="inline-block px-2.5 py-1 rounded-full font-bold text-[11px] border whitespace-nowrap shadow-2xs"
-                                        :class="
-                                            p.status_keseimbangan?.class ||
-                                            'bg-slate-100 text-slate-700 border-slate-200'
-                                        "
-                                    >
-                                        {{
-                                            p.status_keseimbangan?.label ||
-                                            "Seimbang"
-                                        }}
-                                    </span>
+                                    <div class="inline-flex flex-col items-center">
+                                        <span
+                                            class="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full font-bold text-[11px] border whitespace-nowrap shadow-2xs"
+                                            :class="
+                                                p.level_beban?.class ||
+                                                p.status_keseimbangan?.class ||
+                                                'bg-slate-100 text-slate-700 border-slate-200'
+                                            "
+                                        >
+                                            <span
+                                                class="w-1.5 h-1.5 rounded-full shrink-0"
+                                                :class="p.level_beban?.dot_color || 'bg-slate-400'"
+                                            ></span>
+                                            <span>{{
+                                                p.level_beban?.label ||
+                                                p.status_keseimbangan?.label ||
+                                                "Seimbang"
+                                            }}</span>
+                                        </span>
+                                        <span
+                                            v-if="p.level_beban?.diagnosa && p.level_beban?.level !== 'seimbang'"
+                                            class="text-[10px] text-slate-500 mt-1 max-w-[130px] leading-tight text-center"
+                                            :title="p.level_beban?.diagnosa"
+                                        >
+                                            {{ p.level_beban?.diagnosa }}
+                                        </span>
+                                    </div>
                                 </td>
                             </tr>
                             <tr v-if="!protokols || protokols.length === 0">

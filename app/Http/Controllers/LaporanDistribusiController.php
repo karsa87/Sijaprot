@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Protokol;
+use App\Services\Scheduling\WorkloadLevelingService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -14,7 +15,7 @@ class LaporanDistribusiController extends Controller
      * Display workload distribution report for protocols.
      * Protected by manage-master gate.
      */
-    public function index(Request $request): Response
+    public function index(Request $request, WorkloadLevelingService $levelingService): Response
     {
         abort_unless(auth()->user()?->can('manage-master'), 403, 'Akses ditolak. Anda tidak memiliki izin untuk melihat laporan distribusi.');
 
@@ -35,10 +36,17 @@ class LaporanDistribusiController extends Controller
             ->orderBy('name')
             ->get();
 
+        $teamFairness = $levelingService->evaluateTeam($protokols);
+
+        foreach ($protokols as $p) {
+            $p->level_beban = $teamFairness['evaluations'][$p->id] ?? null;
+        }
+
         $monthName = Carbon::createFromDate($year, $month, 1)->translatedFormat('F');
 
         return Inertia::render('Laporan/RekapDistribusi', [
             'protokols' => $protokols,
+            'teamFairness' => $teamFairness,
             'selectedMonth' => $month,
             'selectedYear' => $year,
             'monthName' => $monthName,

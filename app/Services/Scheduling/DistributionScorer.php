@@ -73,6 +73,7 @@ class DistributionScorer
             'avg_kunker' => $totalKunker / $totalMembers,
             'avg_wfa' => $totalWfa / $totalMembers,
             'avg_weekend' => $totalWeekend / $totalMembers,
+            'avg_total' => $metrics->count() / $totalMembers,
         ];
     }
 
@@ -155,6 +156,23 @@ class DistributionScorer
             $sKunkerBoost = 40.0;
         }
 
+        $avgTotal = $this->teamAverages['avg_total'] ?? 2.0;
+
+        // Fatigue Prevention / Overwork Penalty (PRD v2.0 Fitur 7.2.A):
+        // Pegawai berstatus Overwork otomatis diberi penalti -40.0 agar tidak terpilih
+        $overworkPenalty = 0.0;
+        $isOverwork = ($totalMonth >= ($avgTotal + 2) && $totalMonth > 0) || ($weekendCount >= 3);
+        if ($isOverwork) {
+            $overworkPenalty = -40.0;
+        }
+
+        // Harus Ditugaskan Boost (PRD v2.0 Fitur 7.2.B):
+        // Pegawai dengan volume tugas rendah (<= mu - 2 dan mu >= 2) mendapat dorongan prioritas +35.0
+        $harusDitugaskanBoost = 0.0;
+        if ($totalMonth > 0 && $avgTotal >= 2.0 && $totalMonth <= ($avgTotal - 2)) {
+            $harusDitugaskanBoost = 35.0;
+        }
+
         $finalScore = round(
             $sMinMonth +
             $sBalanceKunker +
@@ -163,7 +181,9 @@ class DistributionScorer
             $sBalanceWfa +
             $sBalanceWeekend +
             $sIdleTime +
-            $sKunkerBoost,
+            $sKunkerBoost +
+            $overworkPenalty +
+            $harusDitugaskanBoost,
             2
         );
 
@@ -175,6 +195,12 @@ class DistributionScorer
             $reasons[] = 'Belum pernah bertugas bulan ini (Prioritas Wajib)';
         } else {
             $reasons[] = "Total tugas bulan ini {$totalMonth}x";
+        }
+
+        if ($isOverwork) {
+            $reasons[] = 'Status Overwork: Penalti istirahat fatigue prevention (-40 poin)';
+        } elseif ($harusDitugaskanBoost > 0) {
+            $reasons[] = 'Status Harus Ditugaskan: Dorongan jam terbang tertinggal (+35 poin)';
         }
 
         if ($kegiatan->isKunker() && $kunkerCount == 0) {
@@ -213,6 +239,8 @@ class DistributionScorer
                 'balance_weekend' => $sBalanceWeekend,
                 'idle_time' => $sIdleTime,
                 'kunker_boost' => $sKunkerBoost,
+                'overwork_penalty' => $overworkPenalty,
+                'harus_ditugaskan_boost' => $harusDitugaskanBoost,
                 'total_tasks_this_month' => $totalMonth,
             ],
         ];

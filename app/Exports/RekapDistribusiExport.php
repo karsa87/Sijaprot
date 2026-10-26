@@ -3,6 +3,7 @@
 namespace App\Exports;
 
 use App\Models\Protokol;
+use App\Services\Scheduling\WorkloadLevelingService;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\FromCollection;
@@ -22,6 +23,10 @@ class RekapDistribusiExport implements FromCollection, ShouldAutoSize, WithHeadi
 
     protected int $rowNumber = 0;
 
+    protected ?Collection $cachedCollection = null;
+
+    protected ?array $teamFairness = null;
+
     public function __construct(int $month, int $year)
     {
         $this->month = $month;
@@ -30,7 +35,11 @@ class RekapDistribusiExport implements FromCollection, ShouldAutoSize, WithHeadi
 
     public function collection(): Collection
     {
-        return Protokol::active()
+        if ($this->cachedCollection !== null) {
+            return $this->cachedCollection;
+        }
+
+        $protokols = Protokol::active()
             ->withMonthlyMetrics($this->month, $this->year)
             ->with(['kegiatan' => function ($kq) {
                 $kq->whereMonth('start_datetime', $this->month)
@@ -42,15 +51,34 @@ class RekapDistribusiExport implements FromCollection, ShouldAutoSize, WithHeadi
             }])
             ->orderBy('name')
             ->get();
+
+        $this->teamFairness = app(WorkloadLevelingService::class)->evaluateTeam($protokols);
+
+        foreach ($protokols as $p) {
+            $p->level_beban = $this->teamFairness['evaluations'][$p->id] ?? null;
+        }
+
+        $this->cachedCollection = $protokols;
+
+        return $this->cachedCollection;
     }
 
     public function headings(): array
     {
+        if ($this->cachedCollection === null) {
+            $this->collection();
+        }
+
         $monthName = Carbon::createFromDate($this->year, $this->month, 1)->translatedFormat('F Y');
+        $tf = $this->teamFairness;
+        $statusLine = '[STATUS TIM: '.strtoupper($tf['status_label'] ?? 'SANGAT SEIMBANG').' (Indeks: '.($tf['indeks'] ?? 100).'%)]';
+        $summaryLine = ($tf['summary_text'] ?? '').' — '.($tf['diagnosa_text'] ?? '');
 
         return [
             ['KEMENTERIAN PENDIDIKAN DASAR DAN MENENGAH RI'],
             ["REKAPITULASI KESEIMBANGAN DISTRIBUSI TUGAS PROTOKOL - {$monthName}"],
+            [$statusLine],
+            [$summaryLine],
             [],
             [
                 'No',
@@ -64,7 +92,8 @@ class RekapDistribusiExport implements FromCollection, ShouldAutoSize, WithHeadi
                 'Hari Weekend',
                 'Hari Weekday',
                 'Total Tugas',
-                'Status Keseimbangan',
+                'Status Beban Kerja',
+                'Catatan Diagnosa',
             ],
         ];
     }
@@ -87,6 +116,8 @@ class RekapDistribusiExport implements FromCollection, ShouldAutoSize, WithHeadi
         }
 
         $paidTasks = $protokol->tugas_paid ?? (($protokol->tugas_dibayar_workday ?? 0) + ($protokol->tugas_dibayar_offday ?? 0));
+        $statusLevel = $protokol->level_beban['label'] ?? ($protokol->status_keseimbangan['label'] ?? 'Seimbang');
+        $diagnosa = $protokol->level_beban['diagnosa'] ?? '-';
 
         return [
             $this->rowNumber,
@@ -100,14 +131,16 @@ class RekapDistribusiExport implements FromCollection, ShouldAutoSize, WithHeadi
             ($protokol->tugas_offday ?? 0).'x',
             ($protokol->tugas_workday ?? 0).'x',
             ($protokol->total_tugas_bulan_ini ?? 0).'x',
-            $protokol->status_keseimbangan['label'] ?? 'Seimbang',
+            $statusLevel,
+            $diagnosa,
         ];
     }
 
     public function styles(Worksheet $sheet): void
     {
         $sheet->getStyle('G')->getAlignment()->setWrapText(true);
-        $sheet->getStyle('A4:L4')->getFont()->setBold(true);
+        $sheet->getStyle('A3:A4')->getFont()->setBold(true);
+        $sheet->getStyle('A6:M6')->getFont()->setBold(true);
         $sheet->getStyle('L')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
     }
 

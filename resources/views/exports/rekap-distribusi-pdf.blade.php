@@ -123,6 +123,21 @@
             border: 1px solid #bae6fd;
         }
 
+        .badge-rose {
+            background-color: #ffe4e6;
+            color: #9f1239;
+            border: 1px solid #fecdd3;
+        }
+
+        .team-summary-box {
+            background-color: #f8fafc;
+            border: 1px solid #cbd5e1;
+            border-left: 4px solid #1A5276;
+            border-radius: 4px;
+            padding: 5px 8px;
+            margin-bottom: 10px;
+        }
+
         .footer-sig {
             width: 100%;
             margin-top: 25px;
@@ -151,21 +166,47 @@
         <span>Periode: {{ $monthName }} {{ $year }}</span>
     </div>
 
-    <!-- TABLE REKAP (7 METRIK SPESIFIK & STATUS KESEIMBANGAN TANPA NIP) -->
+    @if (!empty($teamFairness))
+        <!-- KOTAK RINGKASAN EKSEKUTIF STATUS TIM (PRD v2.0 Section 7.5) -->
+        <div class="team-summary-box">
+            <table style="width: 100%; border: none; margin: 0;">
+                <tr>
+                    <td style="border: none; padding: 0; width: 62%; vertical-align: middle;">
+                        <span style="font-weight: bold; font-size: 7pt; text-transform: uppercase; color: #0f172a;">
+                            Status Tim:
+                        </span>
+                        <span class="badge badge-{{ $teamFairness['status'] === 'sangat_seimbang' ? 'optimal' : ($teamFairness['status'] === 'cukup_seimbang' ? 'warn' : 'rose') }}" style="font-size: 6.5pt;">
+                            {{ $teamFairness['status_label'] }} (Indeks: {{ $teamFairness['indeks'] }}%)
+                        </span>
+                        <div style="font-size: 6pt; color: #475569; margin-top: 2px;">
+                            {{ $teamFairness['diagnosa_text'] }}
+                        </div>
+                    </td>
+                    <td style="border: none; padding: 0; width: 38%; text-align: right; vertical-align: middle;">
+                        <span style="font-size: 6.5pt; font-weight: bold; color: #1e293b;">
+                            {{ $teamFairness['summary_text'] }}
+                        </span>
+                    </td>
+                </tr>
+            </table>
+        </div>
+    @endif
+
+    <!-- TABLE REKAP (7 METRIK SPESIFIK & STATUS BEBAN KERJA TANPA NIP) -->
     <table>
         <thead>
             <tr>
-                <th style="width: 20px;">No</th>
-                <th style="width: 105px; text-align: left; padding-left: 5px;">Nama Protokol</th>
+                <th style="width: 18px;">No</th>
+                <th style="width: 100px; text-align: left; padding-left: 5px;">Nama Protokol</th>
                 <th style="width: 38px;">Tidak Dibayar</th>
-                <th style="width: 38px;">Dibayar</th>
-                <th style="width: 48px;">Kemungkinan Dibayar</th>
+                <th style="width: 36px;">Dibayar</th>
+                <th style="width: 44px;">Kemungkinan Dibayar</th>
                 <th>Kunker (Total & Rincian Agenda)</th>
-                <th style="width: 34px;">WFA (Jum)</th>
-                <th style="width: 38px;">Hari Weekend</th>
-                <th style="width: 38px;">Hari Weekday</th>
-                <th style="width: 34px;">Total Tugas</th>
-                <th style="width: 75px;">Status Keseimbangan</th>
+                <th style="width: 32px;">WFA (Jum)</th>
+                <th style="width: 36px;">Hari Weekend</th>
+                <th style="width: 36px;">Hari Weekday</th>
+                <th style="width: 32px;">Total Tugas</th>
+                <th style="width: 78px;">Status Beban</th>
             </tr>
         </thead>
         <tbody>
@@ -196,9 +237,14 @@
                         {{ $p->total_tugas_bulan_ini ?? 0 }}x
                     </td>
                     <td class="text-center">
-                        <span class="badge badge-{{ $p->status_keseimbangan['badge'] ?? 'neutral' }}">
-                            {{ $p->status_keseimbangan['label'] ?? 'Seimbang' }}
+                        <span class="badge badge-{{ $p->level_beban['pdf_badge'] ?? ($p->status_keseimbangan['badge'] ?? 'neutral') }}">
+                            {{ $p->level_beban['label'] ?? ($p->status_keseimbangan['label'] ?? 'Seimbang') }}
                         </span>
+                        @if (!empty($p->level_beban['diagnosa']) && ($p->level_beban['level'] ?? '') !== 'seimbang')
+                            <div style="font-size: 5.5pt; color: #64748b; margin-top: 2px; line-height: 1.1;">
+                                {{ $p->level_beban['diagnosa'] }}
+                            </div>
+                        @endif
                     </td>
                 </tr>
             @endforeach

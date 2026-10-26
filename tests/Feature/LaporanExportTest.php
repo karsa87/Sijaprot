@@ -82,13 +82,15 @@ class LaporanExportTest extends TestCase
         $export = new RekapDistribusiExport(10, 2026);
         $headings = $export->headings();
 
-        $tableHeaders = $headings[3];
+        $tableHeaders = collect($headings)->first(fn ($row) => in_array('No', $row));
+        $this->assertNotNull($tableHeaders);
         $this->assertContains('Tidak Dibayar', $tableHeaders);
         $this->assertContains('Dibayar', $tableHeaders);
         $this->assertContains('Kemungkinan Dibayar', $tableHeaders);
         $this->assertContains('Kunker (Total & Rincian Agenda)', $tableHeaders);
         $this->assertContains('WFA (Jum\'at)', $tableHeaders);
-        $this->assertContains('Status Keseimbangan', $tableHeaders);
+        $this->assertContains('Status Beban Kerja', $tableHeaders);
+        $this->assertContains('Catatan Diagnosa', $tableHeaders);
         $this->assertNotContains('NIP', $tableHeaders);
 
         $collection = $export->collection();
@@ -103,7 +105,7 @@ class LaporanExportTest extends TestCase
         // Column G (index 6) should contain kunker summary with bullet point and date
         $this->assertStringContainsString('1x', $mapped[6]);
         $this->assertStringContainsString('15/10: Kunker DPR RI Bali', $mapped[6]);
-        // Column L (index 11) should contain Status Keseimbangan
+        // Column L (index 11) should contain Status Beban Kerja
         $this->assertNotEmpty($mapped[11]);
     }
 
