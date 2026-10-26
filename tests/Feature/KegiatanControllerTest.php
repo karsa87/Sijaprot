@@ -131,13 +131,17 @@ class KegiatanControllerTest extends TestCase
                 'start_time' => '08:00',
                 'end_date' => $startDate,
                 'end_time' => '11:00',
+                'is_kunker' => true,
                 'recommendations' => [
                     ['protokol' => ['id' => $this->dewi->id]],
                 ],
             ]);
 
         $response->assertRedirect('/dashboard');
-        $this->assertDatabaseHas('kegiatan', ['title' => 'Sidang Paripurna Baru']);
+        $this->assertDatabaseHas('kegiatan', [
+            'title' => 'Sidang Paripurna Baru',
+            'is_kunker' => true,
+        ]);
 
         $kegiatan = Kegiatan::where('title', 'Sidang Paripurna Baru')->firstOrFail();
         $this->assertDatabaseHas('penugasan', [
@@ -165,6 +169,8 @@ class KegiatanControllerTest extends TestCase
                 ->component('Kegiatan/FormKegiatan')
                 ->where('isEditing', true)
                 ->where('kegiatan.title', 'Kegiatan Edit Test')
+                ->where('kegiatan.is_kunker', false)
+                ->has('kegiatan.is_wfa')
             );
     }
 
@@ -176,6 +182,7 @@ class KegiatanControllerTest extends TestCase
             'start_datetime' => Carbon::now()->addDays(5)->setHour(9),
             'end_datetime' => Carbon::now()->addDays(5)->setHour(12),
             'location_type' => 'dalam_kota',
+            'is_kunker' => false,
             'jumlah_protokol' => 1,
             'status' => 'draft',
         ]);
@@ -191,13 +198,17 @@ class KegiatanControllerTest extends TestCase
                 'start_time' => '10:00',
                 'end_date' => $startDate,
                 'end_time' => '13:00',
+                'is_kunker' => true,
                 'recommendations' => [
                     ['protokol' => ['id' => $this->andi->id]],
                 ],
             ]);
 
         $response->assertRedirect('/dashboard');
-        $this->assertDatabaseHas('kegiatan', ['title' => 'Kegiatan Setelah Update Sukses']);
+        $this->assertDatabaseHas('kegiatan', [
+            'title' => 'Kegiatan Setelah Update Sukses',
+            'is_kunker' => true,
+        ]);
     }
 
     public function test_can_soft_delete_kegiatan(): void

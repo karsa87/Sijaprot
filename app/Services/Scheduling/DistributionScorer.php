@@ -18,6 +18,12 @@ class DistributionScorer
 
     /**
      * Hitung metrik rata-rata tim untuk bulan kegiatan.
+     * Mengukur 5 parameter agregasi tim:
+     * - avg_paid (tugas dibayar pasti)
+     * - avg_conditional (peluang honorarium tentatif)
+     * - avg_kunker (kunjungan kerja)
+     * - avg_wfa (piket hari Jum'at WFA)
+     * - avg_weekend (tugas akhir pekan / libur)
      */
     public function computeTeamAverages(Collection $activeProtokols, int $month, int $year): void
     {
@@ -35,8 +41,10 @@ class DistributionScorer
             ->get();
 
         $totalPaid = 0;
+        $totalConditional = 0;
+        $totalKunker = 0;
+        $totalWfa = 0;
         $totalWeekend = 0;
-        $totalTrip = 0;
 
         foreach ($metrics as $penugasan) {
             $k = $penugasan->kegiatan;
@@ -44,25 +52,36 @@ class DistributionScorer
                 if ($k->jenisKegiatan?->isPaid()) {
                     $totalPaid++;
                 }
+                if ($k->jenisKegiatan?->isConditional()) {
+                    $totalConditional++;
+                }
+                if ($k->isKunker()) {
+                    $totalKunker++;
+                }
+                if ($k->isWfa()) {
+                    $totalWfa++;
+                }
                 if ($k->is_weekend || $k->is_holiday) {
                     $totalWeekend++;
-                }
-                if ($k->isLuarKota()) {
-                    $totalTrip++;
                 }
             }
         }
 
         $this->teamAverages = [
             'avg_paid' => $totalPaid / $totalMembers,
+            'avg_conditional' => $totalConditional / $totalMembers,
+            'avg_kunker' => $totalKunker / $totalMembers,
+            'avg_wfa' => $totalWfa / $totalMembers,
             'avg_weekend' => $totalWeekend / $totalMembers,
-            'avg_trip' => $totalTrip / $totalMembers,
         ];
     }
 
     /**
-     * Hitung skor kelayakan individu protokol beserta alasan transparan.
+     * Hitung skor kelayakan multidimensi individu protokol beserta alasan transparan.
      * Skor lebih tinggi = Lebih diprioritaskan.
+     *
+     * Formula PRD v2.0:
+     * FinalScore = Wmin*Smin + Wkunker*Skunker + Wpay*Spay + Wcond*Scond + Wwfa*Swfa + Woff*Soff + Widle*Sidle (+ SkunkerBoost)
      *
      * @return array{score: float, reason: string, breakdown: array}
      */
@@ -79,8 +98,10 @@ class DistributionScorer
 
         $totalMonth = $protoData->total_tugas_bulan_ini ?? 0;
         $paidCount = ($protoData->tugas_dibayar_workday ?? 0) + ($protoData->tugas_dibayar_offday ?? 0);
-        $weekendCount = $protoData->tugas_dibayar_offday ?? 0;
-        $tripCount = $protoData->trip_luar_kota ?? 0;
+        $condCount = $protoData->tugas_conditional ?? 0;
+        $kunkerCount = $protoData->tugas_kunker ?? 0;
+        $wfaCount = $protoData->tugas_wfa ?? 0;
+        $weekendCount = $protoData->tugas_offday ?? 0;
 
         // Cari tugas terakhir protokol untuk menghitung idle time
         $lastAssignment = Penugasan::where('protokol_id', $protokol->id)
@@ -98,41 +119,76 @@ class DistributionScorer
         }
 
         $avgPaid = $this->teamAverages['avg_paid'] ?? 1.0;
+        $avgCond = $this->teamAverages['avg_conditional'] ?? 0.5;
+        $avgKunker = $this->teamAverages['avg_kunker'] ?? 0.5;
+        $avgWfa = $this->teamAverages['avg_wfa'] ?? 0.5;
         $avgWeekend = $this->teamAverages['avg_weekend'] ?? 0.5;
-        $avgTrip = $this->teamAverages['avg_trip'] ?? 0.5;
 
         // ==========================================
-        // PERHITUNGAN BOBOT SCORING
+        // PERHITUNGAN BOBOT MULTIDIMENSI (PRD v2.0)
         // ==========================================
-        // W1 (Bobot 50.0): Prioritas tertinggi untuk yang belum bertugas bulan ini
+        // 1. Smin (Bobot 50.0): Wajib minimal 1x tugas per bulan (Aturan H2)
         $sMinMonth = ($totalMonth == 0) ? 50.0 : 0.0;
 
-        // W2 (Bobot 15.0): Keseimbangan tugas berbayar (yang di bawah rata-rata diprioritaskan)
+        // 2. Skunker (Bobot 35.0): Keseimbangan dinas Kunker
+        $sBalanceKunker = max(0.0, ($avgKunker - $kunkerCount) * 35.0);
+
+        // 3. Spay (Bobot 15.0): Keseimbangan perolehan honorarium pasti
         $sBalancePay = max(0.0, ($avgPaid - $paidCount) * 15.0);
 
-        // W3 (Bobot 15.0): Keseimbangan weekend/libur
+        // 4. Scond (Bobot 10.0): Keseimbangan perolehan peluang honorarium (tentatif)
+        $sBalanceCond = max(0.0, ($avgCond - $condCount) * 10.0);
+
+        // 5. Swfa (Bobot 15.0): Keseimbangan piket hari WFA
+        $sBalanceWfa = max(0.0, ($avgWfa - $wfaCount) * 15.0);
+
+        // 6. Soff (Bobot 15.0): Keseimbangan tugas akhir pekan/hari libur
         $sBalanceWeekend = max(0.0, ($avgWeekend - $weekendCount) * 15.0);
 
-        // W4 (Bobot 10.0): Keseimbangan perjalanan dinas luar kota
-        $sBalanceTrip = max(0.0, ($avgTrip - $tripCount) * 10.0);
-
-        // W5 (Bobot 1.0): Rotasi jeda istirahat terlama
+        // 7. Sidle (Bobot 1.0): Rotasi personil dengan jeda istirahat terlama
         $sIdleTime = (float) $daysSinceLastTask * 1.0;
 
-        $finalScore = round($sMinMonth + $sBalancePay + $sBalanceWeekend + $sBalanceTrip + $sIdleTime, 2);
+        // Target Min 1x Kunker per Bulan (PRD 5.3):
+        // Jika kegiatan bertipe Kunker dan protokol belum pernah kunker bulan ini, beri boost prioritas +40.0 poin
+        $sKunkerBoost = 0.0;
+        if ($kegiatan->isKunker() && $kunkerCount == 0) {
+            $sKunkerBoost = 40.0;
+        }
+
+        $finalScore = round(
+            $sMinMonth +
+            $sBalanceKunker +
+            $sBalancePay +
+            $sBalanceCond +
+            $sBalanceWfa +
+            $sBalanceWeekend +
+            $sIdleTime +
+            $sKunkerBoost,
+            2
+        );
 
         // ==========================================
         // PENYUSUNAN REASONING TEKS TRANSPARAN
         // ==========================================
         $reasons = [];
         if ($totalMonth == 0) {
-            $reasons[] = 'Belum pernah bertugas bulan ini (Prioritas Wajib H2)';
+            $reasons[] = 'Belum pernah bertugas bulan ini (Prioritas Wajib)';
         } else {
             $reasons[] = "Total tugas bulan ini {$totalMonth}x";
         }
 
+        if ($kegiatan->isKunker() && $kunkerCount == 0) {
+            $reasons[] = 'Target Kunker: Belum pernah Kunker bulan ini (+40 poin)';
+        } elseif ($kunkerCount <= $avgKunker) {
+            $reasons[] = "Tugas Kunker ({$kunkerCount}x)";
+        }
+
         if ($paidCount <= $avgPaid) {
-            $reasons[] = "Tugas dibayar masih di bawah/sesuai rata-rata tim ({$paidCount}x)";
+            $reasons[] = "Honor pasti di bawah/sesuai rata-rata tim ({$paidCount}x)";
+        }
+
+        if ($kegiatan->isWfa() && $wfaCount == 0) {
+            $reasons[] = 'Belum pernah piket hari WFA bulan ini';
         }
 
         if ($weekendCount == 0 && ($kegiatan->is_weekend || $kegiatan->is_holiday)) {
@@ -150,10 +206,13 @@ class DistributionScorer
             'reason' => $reasonText,
             'breakdown' => [
                 'min_month' => $sMinMonth,
+                'balance_kunker' => $sBalanceKunker,
                 'balance_pay' => $sBalancePay,
+                'balance_cond' => $sBalanceCond,
+                'balance_wfa' => $sBalanceWfa,
                 'balance_weekend' => $sBalanceWeekend,
-                'balance_trip' => $sBalanceTrip,
                 'idle_time' => $sIdleTime,
+                'kunker_boost' => $sKunkerBoost,
                 'total_tasks_this_month' => $totalMonth,
             ],
         ];

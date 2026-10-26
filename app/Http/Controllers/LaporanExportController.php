@@ -30,6 +30,14 @@ class LaporanExportController extends Controller
 
         $protokols = Protokol::active()
             ->withMonthlyMetrics($month, $year)
+            ->with(['kegiatan' => function ($kq) use ($month, $year) {
+                $kq->whereMonth('start_datetime', $month)
+                    ->whereYear('start_datetime', $year)
+                    ->where('status', '!=', 'cancelled')
+                    ->where('is_kunker', true)
+                    ->select(['kegiatan.id', 'kegiatan.title', 'kegiatan.start_datetime'])
+                    ->orderBy('kegiatan.start_datetime', 'asc');
+            }])
             ->orderBy('name')
             ->get();
 

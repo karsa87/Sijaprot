@@ -46,6 +46,7 @@ const form = useForm({
     start_time: props.kegiatan?.start_time || '08:30',
     end_date: props.kegiatan?.end_date || props.defaultDate,
     end_time: props.kegiatan?.end_time || '12:00',
+    is_kunker: props.kegiatan?.is_kunker !== undefined ? Boolean(props.kegiatan.is_kunker) : Boolean(props.jenisList[0]?.is_kunker ?? false),
     detail: props.kegiatan?.detail || '',
     recommendations: props.kegiatan?.recommendations || [],
 });
@@ -67,10 +68,29 @@ watch(() => form.start_date, (newDate) => {
     }
 });
 
-// Multi-day Weekend & Holiday Scanning
+// Auto-sync is_kunker when template changed (for new activity)
+watch(() => form.jenis_kegiatan_id, (newJenisId) => {
+    if (!props.isEditing && newJenisId) {
+        const found = props.jenisList.find((j) => j.id == newJenisId);
+        if (found) {
+            form.is_kunker = Boolean(found.is_kunker);
+        }
+    }
+});
+
+// Multi-day Weekend, Friday WFA & Holiday Scanning
 const detection = computed(() => {
     if (!form.start_date) {
-        return { isWeekend: false, isHoliday: false, hari: 'Hari Kerja', fee: 'Dibayar', lokasi: 'Dalam Kota' };
+        return {
+            isWeekend: false,
+            isHoliday: false,
+            isWfa: false,
+            isKunker: Boolean(form.is_kunker),
+            feeType: 'paid',
+            hari: 'Hari Kerja Biasa',
+            fee: 'Dibayar',
+            lokasi: 'Dalam Kota',
+        };
     }
 
     const start = new Date(form.start_date);
@@ -79,24 +99,38 @@ const detection = computed(() => {
 
     let hasWeekend = false;
     let hasHoliday = false;
+    let hasWfa = false;
     let holidayName = null;
 
     const curr = new Date(start);
     while (curr <= end) {
-        const dayOfWeek = curr.getDay(); // 0 = Minggu, 6 = Sabtu
+        const dayOfWeek = curr.getDay(); // 0 = Minggu, 5 = Jumat, 6 = Sabtu
+        const dateStr = curr.toISOString().substring(0, 10);
+        const isThisDayHoliday = holidayDates.has(dateStr);
+
         if (dayOfWeek === 0 || dayOfWeek === 6) {
             hasWeekend = true;
         }
 
-        const dateStr = curr.toISOString().substring(0, 10);
-        if (holidayDates.has(dateStr)) {
+        if (isThisDayHoliday) {
             hasHoliday = true;
             if (!holidayName) {
                 const found = props.holidays.find((h) => h.tanggal.substring(0, 10) === dateStr);
                 holidayName = found ? found.name : 'Libur Nasional';
             }
+        } else if (dayOfWeek === 5) {
+            hasWfa = true;
         }
+
         curr.setDate(curr.getDate() + 1);
+    }
+
+    // Check if template explicitly designates WFA
+    const jenisDayType = typeof selectedJenis.value?.payment_day_type === 'object'
+        ? selectedJenis.value?.payment_day_type?.value
+        : selectedJenis.value?.payment_day_type;
+    if (jenisDayType === 'wfa' && !hasHoliday) {
+        hasWfa = true;
     }
 
     // Label Hari
@@ -105,16 +139,35 @@ const detection = computed(() => {
         hari = `Libur: ${holidayName || 'Libur Nasional'}`;
     } else if (hasWeekend) {
         hari = start.toDateString() === end.toDateString() ? 'Akhir Pekan (Weekend)' : 'Rentang Akhir Pekan (Weekend)';
+    } else if (hasWfa) {
+        hari = "Jum'at (WFA)";
     }
 
-    // Label Fee
+    // Label Fee & Payment Type
+    const jenisPaymentType = typeof selectedJenis.value?.payment_type === 'object'
+        ? selectedJenis.value?.payment_type?.value
+        : selectedJenis.value?.payment_type;
+
+    const feeType = jenisPaymentType || 'paid';
     let fee = 'Dibayar (Hari Kerja)';
-    if (selectedJenis.value) {
-        const isPaid = (typeof selectedJenis.value.payment_type === 'object' ? selectedJenis.value.payment_type.value : selectedJenis.value.payment_type) === 'paid';
-        if (!isPaid) {
-            fee = 'Tidak Dibayar (Rutin)';
-        } else if (hasWeekend || hasHoliday) {
-            fee = 'Dibayar (Luar Hari Kerja)';
+
+    if (feeType === 'unpaid') {
+        fee = 'Tidak Dibayar (Rutin)';
+    } else if (feeType === 'conditional') {
+        if (hasWeekend || hasHoliday) {
+            fee = 'Kemungkinan Dibayar (Luar Kerja)';
+        } else if (hasWfa) {
+            fee = "Kemungkinan Dibayar (WFA)";
+        } else {
+            fee = 'Kemungkinan Dibayar (Hari Kerja)';
+        }
+    } else {
+        if (hasWeekend || hasHoliday) {
+            fee = 'Dibayar (Luar Kerja)';
+        } else if (hasWfa) {
+            fee = "Dibayar (WFA)";
+        } else {
+            fee = 'Dibayar (Hari Kerja)';
         }
     }
 
@@ -123,7 +176,16 @@ const detection = computed(() => {
         ? 'Luar Kota (H+1 Gap)'
         : 'Dalam Kota';
 
-    return { isWeekend: hasWeekend, isHoliday: hasHoliday, hari, fee, lokasi };
+    return {
+        isWeekend: hasWeekend,
+        isHoliday: hasHoliday,
+        isWfa: hasWfa,
+        isKunker: Boolean(form.is_kunker),
+        feeType,
+        hari,
+        fee,
+        lokasi,
+    };
 });
 
 // Negative Duration Validation Feedback
@@ -154,6 +216,7 @@ const runSimulation = async () => {
             start_time: form.start_time,
             end_date: form.end_date,
             end_time: form.end_time,
+            is_kunker: form.is_kunker,
             detail: form.detail,
             kegiatan_id: props.kegiatan?.id,
         });
@@ -359,7 +422,7 @@ const deleteKegiatan = () => {
                                     class="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#1A5276] bg-white outline-none"
                                 >
                                     <option v-for="j in jenisList" :key="j.id" :value="j.id">
-                                        {{ j.name }} ({{ (typeof j.location_type === 'object' ? j.location_type.value : j.location_type) === 'luar_kota' ? 'Luar Kota' : 'Dalam Kota' }})
+                                        {{ j.name }} ({{ (typeof j.location_type === 'object' ? j.location_type.value : j.location_type) === 'luar_kota' ? 'Luar Kota' : 'Dalam Kota' }}{{ j.is_kunker ? ' • Kunker' : '' }})
                                     </option>
                                 </select>
                                 <InputError :message="form.errors.jenis_kegiatan_id" />
@@ -380,6 +443,32 @@ const deleteKegiatan = () => {
                                 </div>
                                 <InputError :message="form.errors.jumlah_protokol" />
                             </div>
+                        </div>
+
+                        <!-- KLASIFIKASI KUNJUNGAN KERJA (KUNKER) TOGGLE -->
+                        <div class="p-3 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-between">
+                            <div>
+                                <div class="flex items-center space-x-2">
+                                    <span class="font-bold text-slate-800 text-xs">Agenda Kunjungan Kerja (Kunker)</span>
+                                    <span
+                                        v-if="form.is_kunker"
+                                        class="px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-800 text-[9px] font-bold uppercase tracking-wider"
+                                    >
+                                        Kunker Aktif
+                                    </span>
+                                </div>
+                                <span class="text-[11px] text-slate-500 mt-0.5 block">
+                                    {{ form.is_kunker ? 'Ditandai sebagai agenda dinas Kunker. Algoritma akan memprioritaskan personil yang belum pernah Kunker bulan ini.' : 'Dinas seremonial / kegiatan biasa internal non-kunker.' }}
+                                </span>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer shrink-0">
+                                <input
+                                    type="checkbox"
+                                    v-model="form.is_kunker"
+                                    class="sr-only peer"
+                                />
+                                <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#1A5276]"></div>
+                            </label>
                         </div>
 
                         <!-- Tanggal & Jam Mulai / Selesai -->
@@ -413,22 +502,41 @@ const deleteKegiatan = () => {
                             <span class="text-[11px] font-bold text-[#1A5276] uppercase tracking-wider block">
                                 Klasifikasi Otomatis Terdeteksi Sistem
                             </span>
-                            <div class="grid grid-cols-3 gap-2 text-center text-xs">
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+                                <!-- 1. Kategori Hari -->
                                 <div class="p-2 bg-white rounded-lg border border-blue-100 shadow-2xs">
                                     <span class="text-[10px] text-slate-400 block">Kategori Hari</span>
-                                    <span class="font-bold text-xs" :class="(detection.isWeekend || detection.isHoliday) ? 'text-rose-600' : 'text-slate-700'">
+                                    <span
+                                        class="font-bold text-xs"
+                                        :class="detection.isWfa ? 'text-sky-700' : ((detection.isWeekend || detection.isHoliday) ? 'text-rose-600' : 'text-slate-700')"
+                                    >
                                         {{ detection.hari }}
                                     </span>
                                 </div>
+
+                                <!-- 2. Status Honorarium -->
                                 <div class="p-2 bg-white rounded-lg border border-blue-100 shadow-2xs">
                                     <span class="text-[10px] text-slate-400 block">Honorarium / Fee</span>
                                     <span
                                         class="font-bold text-xs"
-                                        :class="detection.fee.includes('Luar') ? 'text-amber-600' : (detection.fee.includes('Tidak') ? 'text-slate-500' : 'text-emerald-600')"
+                                        :class="detection.feeType === 'paid' ? 'text-emerald-600' : (detection.feeType === 'conditional' ? 'text-sky-600' : 'text-slate-500')"
                                     >
                                         {{ detection.fee }}
                                     </span>
                                 </div>
+
+                                <!-- 3. Agenda Dinas (Kunker) -->
+                                <div class="p-2 bg-white rounded-lg border border-blue-100 shadow-2xs">
+                                    <span class="text-[10px] text-slate-400 block">Agenda Dinas</span>
+                                    <span
+                                        class="font-bold text-xs"
+                                        :class="form.is_kunker ? 'text-violet-700 font-bold' : 'text-slate-600'"
+                                    >
+                                        {{ form.is_kunker ? 'Kunker Pimpinan' : 'Bukan Kunker' }}
+                                    </span>
+                                </div>
+
+                                <!-- 4. Wilayah Dinas -->
                                 <div class="p-2 bg-white rounded-lg border border-blue-100 shadow-2xs">
                                     <span class="text-[10px] text-slate-400 block">Wilayah Dinas</span>
                                     <span class="font-bold text-xs" :class="detection.lokasi.includes('Luar') ? 'text-purple-700' : 'text-blue-700'">

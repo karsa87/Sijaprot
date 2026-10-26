@@ -50,6 +50,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/master/referensi', [ReferensiController::class, 'index'])->name('master.referensi');
         Route::post('/master/referensi/jenis', [ReferensiController::class, 'storeJenis'])->name('master.referensi.jenis.store');
         Route::put('/master/referensi/jenis/{jenisKegiatan}', [ReferensiController::class, 'updateJenis'])->name('master.referensi.jenis.update');
+        Route::delete('/master/referensi/jenis/{jenisKegiatan}', [ReferensiController::class, 'destroyJenis'])->name('master.referensi.jenis.destroy');
         Route::post('/master/referensi/libur', [ReferensiController::class, 'storeLibur'])->name('master.referensi.libur.store');
         Route::put('/master/referensi/libur/{hariLibur}', [ReferensiController::class, 'updateLibur'])->name('master.referensi.libur.update');
         Route::delete('/master/referensi/libur/{hariLibur}', [ReferensiController::class, 'destroyLibur'])->name('master.referensi.libur.destroy');

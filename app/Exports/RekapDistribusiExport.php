@@ -9,9 +9,12 @@ use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
+use Maatwebsite\Excel\Concerns\WithStyles;
 use Maatwebsite\Excel\Concerns\WithTitle;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-class RekapDistribusiExport implements FromCollection, ShouldAutoSize, WithHeadings, WithMapping, WithTitle
+class RekapDistribusiExport implements FromCollection, ShouldAutoSize, WithHeadings, WithMapping, WithStyles, WithTitle
 {
     protected int $month;
 
@@ -29,6 +32,14 @@ class RekapDistribusiExport implements FromCollection, ShouldAutoSize, WithHeadi
     {
         return Protokol::active()
             ->withMonthlyMetrics($this->month, $this->year)
+            ->with(['kegiatan' => function ($kq) {
+                $kq->whereMonth('start_datetime', $this->month)
+                    ->whereYear('start_datetime', $this->year)
+                    ->where('status', '!=', 'cancelled')
+                    ->where('is_kunker', true)
+                    ->select(['kegiatan.id', 'kegiatan.title', 'kegiatan.start_datetime'])
+                    ->orderBy('kegiatan.start_datetime', 'asc');
+            }])
             ->orderBy('name')
             ->get();
     }
@@ -43,19 +54,16 @@ class RekapDistribusiExport implements FromCollection, ShouldAutoSize, WithHeadi
             [],
             [
                 'No',
-                'NIP',
-                'Nama Pegawai Protokol',
+                'Nama Protokol',
                 'Nomor WhatsApp',
-                'Dibayar (Hari Kerja)',
-                'Dibayar (Hari Libur)',
-                'Tidak Dibayar (Hari Kerja)',
-                'Tidak Dibayar (Hari Libur)',
-                'Total Weekday',
-                'Total Weekend',
-                'Dalam Kota',
-                'Luar Kota',
-                'Total Bertugas',
-                'Status Keseimbangan (Fairness)',
+                'Tidak Dibayar',
+                'Dibayar',
+                'Kunker (Total & Rincian Agenda)',
+                'WFA (Jum\'at)',
+                'Hari Weekend',
+                'Hari Weekday',
+                'Total Tugas',
+                'Status Keseimbangan',
             ],
         ];
     }
@@ -64,34 +72,39 @@ class RekapDistribusiExport implements FromCollection, ShouldAutoSize, WithHeadi
     {
         $this->rowNumber++;
 
-        $totalPaid = $protokol->tugas_dibayar_workday + $protokol->tugas_dibayar_offday;
-        $total = $protokol->total_tugas_bulan_ini;
+        $kunkerDetails = [];
+        if ($protokol->kegiatan && $protokol->kegiatan->isNotEmpty()) {
+            foreach ($protokol->kegiatan as $k) {
+                $dateFormatted = Carbon::parse($k->start_datetime)->format('d/m');
+                $kunkerDetails[] = "• {$dateFormatted}: {$k->title}";
+            }
+        }
 
-        $status = 'Seimbang';
-        if ($total == 0) {
-            $status = 'Belum Bertugas (Prioritas)';
-        } elseif ($protokol->tugas_dibayar_offday == 0) {
-            $status = 'Prioritas Weekend';
-        } elseif ($totalPaid >= 3) {
-            $status = 'Sangat Seimbang';
+        $kunkerText = ($protokol->tugas_kunker ?? 0).'x';
+        if (! empty($kunkerDetails)) {
+            $kunkerText .= "\n".implode("\n", $kunkerDetails);
         }
 
         return [
             $this->rowNumber,
-            $protokol->nip ?? '-',
             $protokol->name,
             $protokol->phone_wa,
-            $protokol->tugas_dibayar_workday.'x',
-            $protokol->tugas_dibayar_offday.'x',
-            $protokol->tugas_unpaid_workday.'x',
-            $protokol->tugas_unpaid_offday.'x',
-            $protokol->tugas_workday.'x',
-            $protokol->tugas_offday.'x',
-            $protokol->trip_dalam_kota.'x',
-            $protokol->trip_luar_kota.'x',
-            $total.'x',
-            $status,
+            ($protokol->tugas_unpaid ?? 0).'x',
+            ($protokol->tugas_dibayar_total ?? 0).'x',
+            $kunkerText,
+            ($protokol->tugas_wfa ?? 0).'x',
+            ($protokol->tugas_offday ?? 0).'x',
+            ($protokol->tugas_workday ?? 0).'x',
+            ($protokol->total_tugas_bulan_ini ?? 0).'x',
+            $protokol->status_keseimbangan['label'] ?? 'Seimbang',
         ];
+    }
+
+    public function styles(Worksheet $sheet): void
+    {
+        $sheet->getStyle('F')->getAlignment()->setWrapText(true);
+        $sheet->getStyle('A4:K4')->getFont()->setBold(true);
+        $sheet->getStyle('K')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
     }
 
     public function title(): string

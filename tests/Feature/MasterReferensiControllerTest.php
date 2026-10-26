@@ -2,10 +2,15 @@
 
 namespace Tests\Feature;
 
+use App\Enums\KegiatanStatus;
+use App\Enums\LocationType;
+use App\Enums\PaymentType;
 use App\Enums\UserRole;
 use App\Models\HariLibur;
 use App\Models\JenisKegiatan;
+use App\Models\Kegiatan;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -57,6 +62,7 @@ class MasterReferensiControllerTest extends TestCase
             'payment_type' => 'paid',
             'payment_day_type' => 'workday',
             'location_type' => 'dalam_kota',
+            'is_kunker' => false,
             'estimated_fee' => 150000,
         ]);
 
@@ -76,15 +82,20 @@ class MasterReferensiControllerTest extends TestCase
             ->post('/master/referensi/jenis', [
                 'name' => 'Sidang Pleno Menteri',
                 'code' => 'SIDANG_PLENO',
-                'payment_type' => 'paid',
+                'payment_type' => 'conditional',
                 'payment_day_type' => 'workday',
                 'location_type' => 'dalam_kota',
+                'is_kunker' => true,
                 'estimated_fee' => 200000,
                 'description' => 'SOP Protokol Sidang Pleno',
             ]);
 
         $response->assertRedirect();
-        $this->assertDatabaseHas('jenis_kegiatan', ['code' => 'SIDANG_PLENO']);
+        $this->assertDatabaseHas('jenis_kegiatan', [
+            'code' => 'SIDANG_PLENO',
+            'payment_type' => 'conditional',
+            'is_kunker' => true,
+        ]);
 
         $jenis = JenisKegiatan::where('code', 'SIDANG_PLENO')->firstOrFail();
 
@@ -95,6 +106,7 @@ class MasterReferensiControllerTest extends TestCase
                 'payment_type' => 'paid',
                 'payment_day_type' => 'offday',
                 'location_type' => 'luar_kota',
+                'is_kunker' => false,
                 'estimated_fee' => 350000,
             ])
             ->assertRedirect();
@@ -103,7 +115,80 @@ class MasterReferensiControllerTest extends TestCase
             'id' => $jenis->id,
             'name' => 'Sidang Pleno Menteri Updated',
             'location_type' => 'luar_kota',
+            'payment_type' => 'paid',
+            'is_kunker' => false,
         ]);
+
+        // Test update to WFA payment_day_type
+        $this->actingAs($this->admin)
+            ->put("/master/referensi/jenis/{$jenis->id}", [
+                'name' => 'Sidang Pleno WFA',
+                'code' => 'SIDANG_PLENO',
+                'payment_type' => 'paid',
+                'payment_day_type' => 'wfa',
+                'location_type' => 'dalam_kota',
+                'is_kunker' => false,
+                'estimated_fee' => 250000,
+            ])
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('jenis_kegiatan', [
+            'id' => $jenis->id,
+            'payment_day_type' => 'wfa',
+        ]);
+        $this->assertTrue($jenis->fresh()->isWfa());
+    }
+
+    public function test_safe_deletion_hard_deletes_when_no_activities(): void
+    {
+        $jenis = JenisKegiatan::create([
+            'name' => 'Jenis Kosong',
+            'code' => 'JENIS_KOSONG',
+            'payment_type' => 'unpaid',
+            'location_type' => 'dalam_kota',
+            'is_kunker' => false,
+            'estimated_fee' => 0,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->delete("/master/referensi/jenis/{$jenis->id}")
+            ->assertRedirect();
+
+        $this->assertDatabaseMissing('jenis_kegiatan', ['id' => $jenis->id]);
+    }
+
+    public function test_safe_deletion_soft_deletes_when_has_activities(): void
+    {
+        $jenis = JenisKegiatan::create([
+            'name' => 'Kunker Pimpinan',
+            'code' => 'KUNKER_PIMPINAN',
+            'payment_type' => PaymentType::CONDITIONAL,
+            'location_type' => LocationType::LUAR_KOTA,
+            'is_kunker' => true,
+            'estimated_fee' => 500000,
+        ]);
+
+        $kegiatan = Kegiatan::create([
+            'jenis_kegiatan_id' => $jenis->id,
+            'title' => 'Kunjungan Kerja DPR RI',
+            'start_datetime' => Carbon::tomorrow()->setHour(9),
+            'end_datetime' => Carbon::tomorrow()->setHour(12),
+            'jumlah_protokol' => 2,
+            'is_holiday' => false,
+            'is_weekend' => false,
+            'is_kunker' => true,
+            'location_type' => LocationType::LUAR_KOTA,
+            'status' => KegiatanStatus::SCHEDULED,
+            'created_by' => $this->admin->id,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->delete("/master/referensi/jenis/{$jenis->id}")
+            ->assertRedirect();
+
+        // Must be soft deleted (not permanently wiped) to preserve 100% historical integrity
+        $this->assertSoftDeleted('jenis_kegiatan', ['id' => $jenis->id]);
+        $this->assertDatabaseHas('kegiatan', ['id' => $kegiatan->id, 'jenis_kegiatan_id' => $jenis->id]);
     }
 
     public function test_cannot_input_estimated_fee_exceeding_threshold(): void

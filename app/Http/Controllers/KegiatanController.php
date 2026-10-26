@@ -54,7 +54,7 @@ class KegiatanController extends Controller
     {
         $kegiatan->load([
             'penugasan.protokol:id,name,phone_wa,status',
-            'jenisKegiatan:id,name,code,location_type,payment_type',
+            'jenisKegiatan:id,name,code,location_type,payment_type,payment_day_type,is_kunker',
         ]);
 
         $jenisList = JenisKegiatan::query()->orderBy('name')->get();
@@ -87,6 +87,8 @@ class KegiatanController extends Controller
                 'start_time' => $kegiatan->start_datetime->format('H:i'),
                 'end_date' => $kegiatan->end_datetime->toDateString(),
                 'end_time' => $kegiatan->end_datetime->format('H:i'),
+                'is_kunker' => (bool) $kegiatan->is_kunker,
+                'is_wfa' => $kegiatan->isWfa(),
                 'detail' => $kegiatan->detail ?? '',
                 'recommendations' => $existingRecs,
             ],
@@ -160,6 +162,7 @@ class KegiatanController extends Controller
         // Multi-day & weekend detection
         $isWeekend = Carbon::parse($validated['start_date'])->isWeekend() || Carbon::parse($validated['end_date'])->isWeekend();
         $isHoliday = HariLibur::isHoliday(Carbon::parse($validated['start_date'])) || HariLibur::isHoliday(Carbon::parse($validated['end_date']));
+        $isKunker = isset($validated['is_kunker']) ? (bool) $validated['is_kunker'] : $jenis->isKunker();
 
         $kegiatan = Kegiatan::create([
             'jenis_kegiatan_id' => $jenis->id,
@@ -170,6 +173,7 @@ class KegiatanController extends Controller
             'jumlah_protokol' => $validated['jumlah_protokol'],
             'is_weekend' => $isWeekend,
             'is_holiday' => $isHoliday,
+            'is_kunker' => $isKunker,
             'location_type' => $jenis->location_type->value,
             'status' => KegiatanStatus::DRAFT->value,
             'created_by' => Auth::id(),
@@ -202,6 +206,7 @@ class KegiatanController extends Controller
 
         $isWeekend = Carbon::parse($validated['start_date'])->isWeekend() || Carbon::parse($validated['end_date'])->isWeekend();
         $isHoliday = HariLibur::isHoliday(Carbon::parse($validated['start_date'])) || HariLibur::isHoliday(Carbon::parse($validated['end_date']));
+        $isKunker = isset($validated['is_kunker']) ? (bool) $validated['is_kunker'] : (bool) $kegiatan->is_kunker;
 
         $kegiatan->update([
             'jenis_kegiatan_id' => $jenis->id,
@@ -212,6 +217,7 @@ class KegiatanController extends Controller
             'jumlah_protokol' => $validated['jumlah_protokol'],
             'is_weekend' => $isWeekend,
             'is_holiday' => $isHoliday,
+            'is_kunker' => $isKunker,
             'location_type' => $jenis->location_type->value,
         ]);
 
@@ -274,6 +280,7 @@ class KegiatanController extends Controller
                 },
             ],
             'end_time' => ['required', 'date_format:H:i'],
+            'is_kunker' => ['nullable', 'boolean'],
             'detail' => ['nullable', 'string', 'max:1000'],
         ]);
     }
@@ -289,6 +296,7 @@ class KegiatanController extends Controller
 
         $isWeekend = Carbon::parse($data['start_date'])->isWeekend() || Carbon::parse($data['end_date'])->isWeekend();
         $isHoliday = HariLibur::isHoliday(Carbon::parse($data['start_date'])) || HariLibur::isHoliday(Carbon::parse($data['end_date']));
+        $isKunker = isset($data['is_kunker']) ? (bool) $data['is_kunker'] : ($jenis?->isKunker() ?? false);
 
         return new Kegiatan([
             'id' => $kegiatanId,
@@ -300,6 +308,7 @@ class KegiatanController extends Controller
             'jumlah_protokol' => $data['jumlah_protokol'],
             'is_weekend' => $isWeekend,
             'is_holiday' => $isHoliday,
+            'is_kunker' => $isKunker,
             'location_type' => $jenis?->location_type->value ?? LocationType::DALAM_KOTA->value,
             'status' => KegiatanStatus::DRAFT->value,
         ]);

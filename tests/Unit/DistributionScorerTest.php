@@ -86,4 +86,60 @@ class DistributionScorerTest extends TestCase
         $this->assertGreaterThan($scoreDewi['score'], $scoreAndi['score']);
         $this->assertStringContainsString('Belum pernah bertugas bulan ini', $scoreAndi['reason']);
     }
+
+    public function test_kunker_target_balance_grants_40_point_boost_for_protocol_with_zero_kunker(): void
+    {
+        // Dewi sudah pernah Kunker 1x di bulan Oktober
+        $kegiatanKunkerDewi = Kegiatan::create([
+            'jenis_kegiatan_id' => $this->jenis->id,
+            'title' => 'Kunker Bali Dewi',
+            'start_datetime' => '2026-10-02 09:00:00',
+            'end_datetime' => '2026-10-02 17:00:00',
+            'is_kunker' => true,
+            'status' => 'scheduled',
+        ]);
+        Penugasan::create([
+            'kegiatan_id' => $kegiatanKunkerDewi->id,
+            'protokol_id' => $this->dewi->id,
+            'assigned_at' => '2026-10-02 09:00:00',
+        ]);
+
+        // Andi sudah bertugas 1x tapi bukan Kunker (tugas biasa)
+        $kegiatanBiasaAndi = Kegiatan::create([
+            'jenis_kegiatan_id' => $this->jenis->id,
+            'title' => 'Rapat Internal Andi',
+            'start_datetime' => '2026-10-03 09:00:00',
+            'end_datetime' => '2026-10-03 12:00:00',
+            'is_kunker' => false,
+            'status' => 'scheduled',
+        ]);
+        Penugasan::create([
+            'kegiatan_id' => $kegiatanBiasaAndi->id,
+            'protokol_id' => $this->andi->id,
+            'assigned_at' => '2026-10-03 09:00:00',
+        ]);
+
+        // Kegiatan baru bertipe KUNKER
+        $kegiatanKunkerBaru = new Kegiatan([
+            'jenis_kegiatan_id' => $this->jenis->id,
+            'title' => 'Kunjungan Kerja DPR ke Solo',
+            'start_datetime' => '2026-10-25 09:00:00',
+            'end_datetime' => '2026-10-25 18:00:00',
+            'is_kunker' => true,
+        ]);
+
+        $activePool = collect([$this->dewi, $this->andi]);
+        $this->scorer->computeTeamAverages($activePool, 10, 2026);
+
+        $scoreDewi = $this->scorer->calculateScore($this->dewi, $kegiatanKunkerBaru);
+        $scoreAndi = $this->scorer->calculateScore($this->andi, $kegiatanKunkerBaru);
+
+        // Andi (0 kunker) harus memperoleh boost +40.0 poin
+        $this->assertEquals(40.0, $scoreAndi['breakdown']['kunker_boost']);
+        $this->assertEquals(0.0, $scoreDewi['breakdown']['kunker_boost']);
+        $this->assertStringContainsString('Target Kunker: Belum pernah Kunker bulan ini (+40 poin)', $scoreAndi['reason']);
+
+        // Skor Andi harus lebih tinggi dari Dewi pada kegiatan Kunker
+        $this->assertGreaterThan($scoreDewi['score'], $scoreAndi['score']);
+    }
 }

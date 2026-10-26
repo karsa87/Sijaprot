@@ -50,7 +50,7 @@ class LaporanDistribusiControllerTest extends TestCase
 
     public function test_admin_can_view_laporan_distribusi_inertia(): void
     {
-        Protokol::create([
+        $protokol = Protokol::create([
             'name' => 'Dewi Kurnia',
             'phone_wa' => '081234567890',
             'status' => 'active',
@@ -63,6 +63,11 @@ class LaporanDistribusiControllerTest extends TestCase
                 ->component('Laporan/RekapDistribusi')
                 ->has('protokols', 1)
                 ->where('protokols.0.name', 'Dewi Kurnia')
+                ->has('protokols.0.total_tugas_bulan_ini')
+                ->has('protokols.0.tugas_kunker')
+                ->has('protokols.0.tugas_wfa')
+                ->has('protokols.0.tugas_dibayar_total')
+                ->has('protokols.0.status_keseimbangan')
                 ->has('monthName')
             );
     }

@@ -331,4 +331,209 @@ class GapRuleCheckerTest extends TestCase
             'Petugas yang berdinas di akhir pekan sebelumnya harus diblokir pada hari libur nasional tengah pekan.'
         );
     }
+
+    /**
+     * H4: WFA-to-Weekend Guard (Blokir Akhir Pekan di Minggu yang Sama).
+     */
+    public function test_h4_wfa_weekend_guard_blocks_weekend_in_same_week(): void
+    {
+        // 16 Oktober 2026 adalah hari Jum'at
+        $tugasJumatWfa = Kegiatan::create([
+            'jenis_kegiatan_id' => $this->jenisDalamKota->id,
+            'title' => 'Piket Jum\'at WFA',
+            'start_datetime' => '2026-10-16 08:00:00',
+            'end_datetime' => '2026-10-16 11:00:00',
+            'jumlah_protokol' => 1,
+            'is_weekend' => false,
+            'is_holiday' => false,
+            'location_type' => LocationType::DALAM_KOTA->value,
+            'status' => 'scheduled',
+        ]);
+
+        Penugasan::create([
+            'kegiatan_id' => $tugasJumatWfa->id,
+            'protokol_id' => $this->dewi->id,
+            'assigned_at' => '2026-10-16 08:00:00',
+        ]);
+
+        // Tugas Sabtu di minggu yang sama (17 Oktober 2026) -> HARUS DITOLAK
+        $tugasSabtu = new Kegiatan([
+            'jenis_kegiatan_id' => $this->jenisDalamKota->id,
+            'title' => 'Acara Sabtu',
+            'start_datetime' => '2026-10-17 09:00:00',
+            'end_datetime' => '2026-10-17 12:00:00',
+            'jumlah_protokol' => 1,
+            'is_weekend' => true,
+            'location_type' => LocationType::DALAM_KOTA->value,
+        ]);
+
+        $this->assertFalse(
+            $this->checker->passesWfaWeekendGuard($this->dewi, $tugasSabtu),
+            'Protokol yang bertugas di Jum\'at WFA harus diblokir dari tugas Sabtu di minggu yang sama.'
+        );
+
+        // Tugas Minggu di minggu yang sama (18 Oktober 2026) -> HARUS DITOLAK
+        $tugasMinggu = new Kegiatan([
+            'jenis_kegiatan_id' => $this->jenisDalamKota->id,
+            'title' => 'Acara Minggu',
+            'start_datetime' => '2026-10-18 09:00:00',
+            'end_datetime' => '2026-10-18 12:00:00',
+            'jumlah_protokol' => 1,
+            'is_weekend' => true,
+            'location_type' => LocationType::DALAM_KOTA->value,
+        ]);
+
+        $this->assertFalse(
+            $this->checker->passesWfaWeekendGuard($this->dewi, $tugasMinggu),
+            'Protokol yang bertugas di Jum\'at WFA harus diblokir dari tugas Minggu di minggu yang sama.'
+        );
+
+        // Tugas Sabtu di minggu berikutnya (24 Oktober 2026) -> LOLOS
+        $tugasSabtuDepan = new Kegiatan([
+            'jenis_kegiatan_id' => $this->jenisDalamKota->id,
+            'title' => 'Acara Sabtu Depan',
+            'start_datetime' => '2026-10-24 09:00:00',
+            'end_datetime' => '2026-10-24 12:00:00',
+            'jumlah_protokol' => 1,
+            'is_weekend' => true,
+            'location_type' => LocationType::DALAM_KOTA->value,
+        ]);
+
+        $this->assertTrue(
+            $this->checker->passesWfaWeekendGuard($this->dewi, $tugasSabtuDepan),
+            'Protokol yang bertugas di Jum\'at WFA tetap boleh bertugas di weekend minggu berikutnya.'
+        );
+    }
+
+    /**
+     * H4: WFA-to-Weekend Guard berlaku dua arah (jika sudah dijadwalkan weekend, blokir di Jum'at WFA).
+     */
+    public function test_h4_wfa_weekend_guard_blocks_friday_wfa_if_weekend_already_scheduled(): void
+    {
+        // Dewi dijadwalkan pada Sabtu, 17 Oktober 2026
+        $tugasSabtu = Kegiatan::create([
+            'jenis_kegiatan_id' => $this->jenisDalamKota->id,
+            'title' => 'Acara Sabtu',
+            'start_datetime' => '2026-10-17 09:00:00',
+            'end_datetime' => '2026-10-17 12:00:00',
+            'jumlah_protokol' => 1,
+            'is_weekend' => true,
+            'location_type' => LocationType::DALAM_KOTA->value,
+            'status' => 'scheduled',
+        ]);
+
+        Penugasan::create([
+            'kegiatan_id' => $tugasSabtu->id,
+            'protokol_id' => $this->dewi->id,
+            'assigned_at' => '2026-10-17 09:00:00',
+        ]);
+
+        // Tugas baru di Jum'at WFA pada minggu yang sama (16 Oktober 2026) -> HARUS DITOLAK
+        $tugasJumat = new Kegiatan([
+            'jenis_kegiatan_id' => $this->jenisDalamKota->id,
+            'title' => 'Piket Jum\'at WFA',
+            'start_datetime' => '2026-10-16 08:00:00',
+            'end_datetime' => '2026-10-16 11:00:00',
+            'jumlah_protokol' => 1,
+            'is_weekend' => false,
+            'is_holiday' => false,
+            'location_type' => LocationType::DALAM_KOTA->value,
+        ]);
+
+        $this->assertFalse(
+            $this->checker->passesWfaWeekendGuard($this->dewi, $tugasJumat),
+            'Protokol yang sudah terjadwal di akhir pekan harus diblokir dari tugas Jum\'at WFA di minggu yang sama.'
+        );
+    }
+
+    /**
+     * Rotational Rule: Rotasi WFA Antar-Minggu dan Siklus Reset.
+     */
+    public function test_rotasi_wfa_antar_minggu_and_cycle_reset(): void
+    {
+        $budi = Protokol::create([
+            'name' => 'Budi Utomo',
+            'phone_wa' => '081299998888',
+            'status' => 'active',
+        ]);
+
+        $pool = collect([$this->dewi, $budi]);
+
+        // Dewi bertugas pada Jum'at WFA minggu 1 (9 Oktober 2026)
+        $tugasJumatMinggu1 = Kegiatan::create([
+            'jenis_kegiatan_id' => $this->jenisDalamKota->id,
+            'title' => 'WFA 9 Okt',
+            'start_datetime' => '2026-10-09 08:00:00',
+            'end_datetime' => '2026-10-09 11:00:00',
+            'is_weekend' => false,
+            'is_holiday' => false,
+            'location_type' => LocationType::DALAM_KOTA->value,
+            'status' => 'scheduled',
+        ]);
+
+        Penugasan::create([
+            'kegiatan_id' => $tugasJumatMinggu1->id,
+            'protokol_id' => $this->dewi->id,
+            'assigned_at' => '2026-10-09 08:00:00',
+        ]);
+
+        // Pada Jum'at WFA minggu 2 (16 Oktober 2026):
+        // Budi belum pernah tugas WFA (0 tugas), Dewi sudah 1 tugas WFA.
+        $tugasJumatMinggu2 = new Kegiatan([
+            'jenis_kegiatan_id' => $this->jenisDalamKota->id,
+            'title' => 'WFA 16 Okt',
+            'start_datetime' => '2026-10-16 08:00:00',
+            'end_datetime' => '2026-10-16 11:00:00',
+            'is_weekend' => false,
+            'is_holiday' => false,
+            'location_type' => LocationType::DALAM_KOTA->value,
+        ]);
+
+        // Dewi harus DITOLAK rotasi WFA karena Budi belum pernah WFA bulan ini
+        $this->assertFalse(
+            $this->checker->passesWfaRotationRule($this->dewi, $tugasJumatMinggu2, $pool),
+            'Dewi harus dirotasi keluar karena Budi belum pernah tugas WFA bulan ini.'
+        );
+
+        // Budi harus DITERIMA
+        $this->assertTrue(
+            $this->checker->passesWfaRotationRule($budi, $tugasJumatMinggu2, $pool),
+            'Budi harus lolos rotasi WFA karena belum pernah tugas WFA bulan ini.'
+        );
+
+        // Budi kemudian ditugaskan di 16 Okt
+        $kegiatanBudi = Kegiatan::create([
+            'jenis_kegiatan_id' => $this->jenisDalamKota->id,
+            'title' => 'WFA 16 Okt Committed',
+            'start_datetime' => '2026-10-16 08:00:00',
+            'end_datetime' => '2026-10-16 11:00:00',
+            'is_weekend' => false,
+            'is_holiday' => false,
+            'location_type' => LocationType::DALAM_KOTA->value,
+            'status' => 'scheduled',
+        ]);
+        Penugasan::create([
+            'kegiatan_id' => $kegiatanBudi->id,
+            'protokol_id' => $budi->id,
+            'assigned_at' => '2026-10-16 08:00:00',
+        ]);
+
+        // Pada Jum'at WFA minggu 3 (23 Oktober 2026):
+        // Karena SELURUH anggota pool (Dewi dan Budi) sudah pernah WFA minimal 1x di bulan ini,
+        // siklus ter-reset dan Dewi kembali lolos!
+        $tugasJumatMinggu3 = new Kegiatan([
+            'jenis_kegiatan_id' => $this->jenisDalamKota->id,
+            'title' => 'WFA 23 Okt',
+            'start_datetime' => '2026-10-23 08:00:00',
+            'end_datetime' => '2026-10-23 11:00:00',
+            'is_weekend' => false,
+            'is_holiday' => false,
+            'location_type' => LocationType::DALAM_KOTA->value,
+        ]);
+
+        $this->assertTrue(
+            $this->checker->passesWfaRotationRule($this->dewi, $tugasJumatMinggu3, $pool),
+            'Siklus rotasi WFA harus ter-reset setelah seluruh personil dalam tim sudah pernah bertugas minimal 1x.'
+        );
+    }
 }

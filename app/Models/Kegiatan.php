@@ -36,6 +36,7 @@ class Kegiatan extends Model
         'jumlah_protokol',
         'is_holiday',
         'is_weekend',
+        'is_kunker',
         'location_type',
         'status',
         'created_by',
@@ -49,6 +50,7 @@ class Kegiatan extends Model
             'jumlah_protokol' => 'integer',
             'is_holiday' => 'boolean',
             'is_weekend' => 'boolean',
+            'is_kunker' => 'boolean',
             'location_type' => LocationType::class,
             'status' => KegiatanStatus::class,
         ];
@@ -126,5 +128,24 @@ class Kegiatan extends Model
     public function isPaid(): bool
     {
         return $this->jenisKegiatan?->isPaid() ?? false;
+    }
+
+    public function isConditional(): bool
+    {
+        return $this->jenisKegiatan?->isConditional() ?? false;
+    }
+
+    public function isKunker(): bool
+    {
+        return (bool) $this->is_kunker;
+    }
+
+    public function isWfa(): bool
+    {
+        if ($this->jenisKegiatan?->isWfa()) {
+            return true;
+        }
+
+        return $this->start_datetime?->dayOfWeekIso === 5 && ! $this->is_holiday;
     }
 }

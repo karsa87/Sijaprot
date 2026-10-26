@@ -23,8 +23,8 @@ class RelaxationPipeline
     public function resolveCandidates(Collection $activePool, Kegiatan $kegiatan, int $needed): array
     {
         // 1. TAHAP NORMAL: Seluruh Hard Rules dievaluasi secara ketat
-        $candidates = $activePool->filter(function (Protokol $p) use ($kegiatan) {
-            return $this->gapChecker->passesAllHardRules($p, $kegiatan, relaxLuarKotaGap: false);
+        $candidates = $activePool->filter(function (Protokol $p) use ($kegiatan, $activePool) {
+            return $this->gapChecker->passesAllHardRules($p, $kegiatan, relaxLuarKotaGap: false, activePool: $activePool, relaxWfaRotation: false);
         });
 
         if ($candidates->count() >= $needed) {
@@ -36,8 +36,8 @@ class RelaxationPipeline
         }
 
         // 2. TAHAP RELAKSASI 1: Longgarkan aturan H1 Luar Kota (dari H+1 hari kalender menjadi 24 jam berbasis waktu)
-        $candidatesRelaxed = $activePool->filter(function (Protokol $p) use ($kegiatan) {
-            return $this->gapChecker->passesAllHardRules($p, $kegiatan, relaxLuarKotaGap: true);
+        $candidatesRelaxed = $activePool->filter(function (Protokol $p) use ($kegiatan, $activePool) {
+            return $this->gapChecker->passesAllHardRules($p, $kegiatan, relaxLuarKotaGap: true, activePool: $activePool, relaxWfaRotation: false);
         });
 
         if ($candidatesRelaxed->count() >= $needed) {
@@ -48,11 +48,30 @@ class RelaxationPipeline
             ];
         }
 
-        // 3. TAHAP RELAKSASI 2: Jika personil aktif tetap kurang dari kuota
+        // 3. TAHAP RELAKSASI 2: Longgarkan Rotasi WFA jika kuota masih kurang pada hari WFA
+        if ($kegiatan->isWfa()) {
+            $candidatesRelaxedWfa = $activePool->filter(function (Protokol $p) use ($kegiatan, $activePool) {
+                return $this->gapChecker->passesAllHardRules($p, $kegiatan, relaxLuarKotaGap: true, activePool: $activePool, relaxWfaRotation: true);
+            });
+
+            if ($candidatesRelaxedWfa->count() >= $needed) {
+                return [
+                    'kandidat' => $candidatesRelaxedWfa,
+                    'level' => 'relaxed_wfa_rotation',
+                    'warning' => 'Relaksasi Otomatis Diterapkan: Rotasi WFA dilonggarkan karena kuota personil yang belum WFA telah terisi.',
+                ];
+            }
+
+            $finalPool = $candidatesRelaxedWfa;
+        } else {
+            $finalPool = $candidatesRelaxed;
+        }
+
+        // 4. Kuota tetap kurang
         return [
-            'kandidat' => $candidatesRelaxed,
+            'kandidat' => $finalPool,
             'level' => 'insufficient_pool',
-            'warning' => "Peringatan Sistem: Jumlah personil yang tersedia ({$candidatesRelaxed->count()}) kurang dari kuota yang diminta ({$needed}). Admin dapat menugaskan personil yang ada atau menambah protokol aktif.",
+            'warning' => "Peringatan Sistem: Jumlah personil yang tersedia ({$finalPool->count()}) kurang dari kuota yang diminta ({$needed}). Admin dapat menugaskan personil yang ada atau menambah protokol aktif.",
         ];
     }
 }
