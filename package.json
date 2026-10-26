@@ -17,7 +17,10 @@
         "vite": "^7.0.7"
     },
     "dependencies": {
+        "@inertiajs/vue3": "^3.9.1",
+        "@vitejs/plugin-vue": "^6.0.10",
         "alpinejs": "^3.17.5",
-        "flatpickr": "^4.6.13"
+        "flatpickr": "^4.6.13",
+        "vue": "^3.5.44"
     }
 }

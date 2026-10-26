@@ -6,8 +6,6 @@ use App\Enums\KegiatanStatus;
 use App\Enums\LocationType;
 use App\Enums\ProtokolStatus;
 use App\Enums\UserRole;
-use App\Livewire\Master\DaftarProtokol;
-use App\Livewire\Master\MasterReferensi;
 use App\Models\AuditOverrideLog;
 use App\Models\JenisKegiatan;
 use App\Models\Kegiatan;
@@ -16,7 +14,6 @@ use App\Models\Protokol;
 use App\Models\User;
 use App\Services\Scheduling\SchedulingEngine;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Livewire\Livewire;
 use Tests\TestCase;
 
 class SecurityAndAuditIntegrityTest extends TestCase
@@ -101,16 +98,20 @@ class SecurityAndAuditIntegrityTest extends TestCase
     }
 
     /**
-     * SEC-01: Operator tidak boleh dapat menjalankan komponen Livewire Master secara langsung (BFLA Defense).
+     * SEC-01: Operator tidak boleh dapat menjalankan mutasi data master secara langsung (BFLA Defense).
      */
-    public function test_operator_cannot_instantiate_master_livewire_components(): void
+    public function test_operator_cannot_mutate_master_data(): void
     {
-        Livewire::actingAs($this->operator)
-            ->test(DaftarProtokol::class)
+        $this->actingAs($this->operator)
+            ->post('/master/protokol', ['name' => 'Hacker'])
             ->assertStatus(403);
 
-        Livewire::actingAs($this->operator)
-            ->test(MasterReferensi::class)
+        $this->actingAs($this->operator)
+            ->post('/master/referensi/jenis', ['name' => 'Hacker'])
+            ->assertStatus(403);
+
+        $this->actingAs($this->operator)
+            ->post('/master/referensi/libur', ['name' => 'Hacker'])
             ->assertStatus(403);
     }
 

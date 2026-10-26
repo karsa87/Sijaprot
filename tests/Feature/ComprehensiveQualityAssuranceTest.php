@@ -7,7 +7,6 @@ use App\Enums\LocationType;
 use App\Enums\ProtokolStatus;
 use App\Enums\UserRole;
 use App\Jobs\ProcessAutoSchedulingJob;
-use App\Livewire\Kegiatan\FormKegiatan;
 use App\Models\JenisKegiatan;
 use App\Models\Kegiatan;
 use App\Models\Penugasan;
@@ -17,7 +16,6 @@ use App\Services\Scheduling\SchedulingEngine;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
-use Livewire\Livewire;
 use Tests\TestCase;
 
 class ComprehensiveQualityAssuranceTest extends TestCase
@@ -124,11 +122,11 @@ class ComprehensiveQualityAssuranceTest extends TestCase
     }
 
     /**
-     * METODE 2: REAL API / HTTP & LIVEWIRE COMPONENT HIT
+     * METODE 2: REAL API / HTTP CONTROLLER & INERTIA HIT
      * - Menguji pemanggilan request HTTP nyata ke controller ekspor
-     * - Menguji interaksi komponen Livewire secara end-to-end (Real Hit)
+     * - Menguji interaksi simulasi dan store penjadwalan secara end-to-end (Real Hit)
      */
-    public function test_real_http_hit_and_livewire_execution(): void
+    public function test_real_http_hit_and_controller_execution(): void
     {
         // 1. Real HTTP Hit ke Endpoint Export Excel
         $response = $this->actingAs($this->admin)
@@ -137,19 +135,34 @@ class ComprehensiveQualityAssuranceTest extends TestCase
         $response->assertStatus(200);
         $response->assertHeader('content-disposition', 'attachment; filename=Rekap_Distribusi_Protokol_10_2026.xlsx');
 
-        // 2. Real Livewire Component Hit
-        Livewire::actingAs($this->admin)
-            ->test(FormKegiatan::class)
-            ->set('title', 'Kunjungan Kerja Real Hit Test')
-            ->set('jenis_kegiatan_id', $this->jenisDalamKota->id)
-            ->set('jumlah_protokol', 2)
-            ->set('start_date', '2026-10-28')
-            ->set('start_time', '09:00')
-            ->set('end_date', '2026-10-28')
-            ->set('end_time', '12:00')
-            ->call('runAutoSchedulerSimulation')
-            ->assertCount('recommendations', 2)
-            ->call('confirmAndSave')
+        // 2. Real Controller Simulation & Store Hit
+        $this->actingAs($this->admin)
+            ->postJson('/kegiatan/simulasi', [
+                'title' => 'Kunjungan Kerja Real Hit Test',
+                'jenis_kegiatan_id' => $this->jenisDalamKota->id,
+                'jumlah_protokol' => 2,
+                'start_date' => '2026-10-28',
+                'start_time' => '09:00',
+                'end_date' => '2026-10-28',
+                'end_time' => '12:00',
+            ])
+            ->assertStatus(200)
+            ->assertJsonStructure(['recommendations']);
+
+        $this->actingAs($this->admin)
+            ->post('/kegiatan', [
+                'title' => 'Kunjungan Kerja Real Hit Test',
+                'jenis_kegiatan_id' => $this->jenisDalamKota->id,
+                'jumlah_protokol' => 2,
+                'start_date' => '2026-10-28',
+                'start_time' => '09:00',
+                'end_date' => '2026-10-28',
+                'end_time' => '12:00',
+                'recommendations' => [
+                    ['protokol' => ['id' => $this->dewi->id]],
+                    ['protokol' => ['id' => $this->andi->id]],
+                ],
+            ])
             ->assertRedirect(route('dashboard'));
     }
 
