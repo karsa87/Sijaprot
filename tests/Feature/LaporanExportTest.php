@@ -83,6 +83,9 @@ class LaporanExportTest extends TestCase
         $headings = $export->headings();
 
         $tableHeaders = $headings[3];
+        $this->assertContains('Tidak Dibayar', $tableHeaders);
+        $this->assertContains('Dibayar', $tableHeaders);
+        $this->assertContains('Kemungkinan Dibayar', $tableHeaders);
         $this->assertContains('Kunker (Total & Rincian Agenda)', $tableHeaders);
         $this->assertContains('WFA (Jum\'at)', $tableHeaders);
         $this->assertContains('Status Keseimbangan', $tableHeaders);
@@ -94,10 +97,46 @@ class LaporanExportTest extends TestCase
         $mapped = $export->map($collection->first());
         $this->assertEquals('Dewi Kurnia', $mapped[1]);
         $this->assertEquals('081111', $mapped[2]);
-        // Column F (index 5) should contain kunker summary with bullet point and date
-        $this->assertStringContainsString('1x', $mapped[5]);
-        $this->assertStringContainsString('15/10: Kunker DPR RI Bali', $mapped[5]);
-        // Column K (index 10) should contain Status Keseimbangan
-        $this->assertNotEmpty($mapped[10]);
+        $this->assertEquals('0x', $mapped[3]); // Tidak Dibayar
+        $this->assertEquals('1x', $mapped[4]); // Dibayar
+        $this->assertEquals('0x', $mapped[5]); // Kemungkinan Dibayar
+        // Column G (index 6) should contain kunker summary with bullet point and date
+        $this->assertStringContainsString('1x', $mapped[6]);
+        $this->assertStringContainsString('15/10: Kunker DPR RI Bali', $mapped[6]);
+        // Column L (index 11) should contain Status Keseimbangan
+        $this->assertNotEmpty($mapped[11]);
+    }
+
+    public function test_export_excel_maps_conditional_payment_correctly(): void
+    {
+        $protokolB = Protokol::create(['name' => 'Ahmad Fajar', 'phone_wa' => '082222', 'status' => ProtokolStatus::ACTIVE]);
+        $jenisCond = JenisKegiatan::create([
+            'code' => 'ACARA_COND',
+            'name' => 'Acara Tentatif DIPA',
+            'payment_type' => PaymentType::CONDITIONAL,
+            'payment_day_type' => PaymentDayType::WORKDAY,
+            'is_kunker' => false,
+        ]);
+        $kegiatanCond = Kegiatan::create([
+            'title' => 'Rakor Tentatif',
+            'jenis_kegiatan_id' => $jenisCond->id,
+            'start_datetime' => Carbon::create(2026, 10, 20, 10, 0, 0),
+            'end_datetime' => Carbon::create(2026, 10, 20, 12, 0, 0),
+            'location' => 'Jakarta',
+            'is_kunker' => false,
+            'status' => 'completed',
+        ]);
+        $kegiatanCond->protokols()->attach($protokolB->id, ['is_system_assigned' => true]);
+
+        $export = new RekapDistribusiExport(10, 2026);
+        $collection = $export->collection();
+        $ahmad = $collection->firstWhere('name', 'Ahmad Fajar');
+        $this->assertNotNull($ahmad);
+
+        $mapped = $export->map($ahmad);
+        $this->assertEquals('Ahmad Fajar', $mapped[1]);
+        $this->assertEquals('0x', $mapped[3]); // Tidak Dibayar
+        $this->assertEquals('0x', $mapped[4]); // Dibayar
+        $this->assertEquals('1x', $mapped[5]); // Kemungkinan Dibayar
     }
 }

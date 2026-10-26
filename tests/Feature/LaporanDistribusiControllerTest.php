@@ -67,6 +67,8 @@ class LaporanDistribusiControllerTest extends TestCase
                 ->has('protokols.0.tugas_kunker')
                 ->has('protokols.0.tugas_wfa')
                 ->has('protokols.0.tugas_dibayar_total')
+                ->has('protokols.0.tugas_paid')
+                ->has('protokols.0.tugas_conditional')
                 ->has('protokols.0.status_keseimbangan')
                 ->has('monthName')
             );

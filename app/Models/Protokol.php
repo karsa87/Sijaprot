@@ -149,6 +149,17 @@ class Protokol extends Model
                         });
                 });
             },
+            // Definite paid tasks (paid only)
+            'penugasan as tugas_paid' => function (Builder $q) use ($month, $year) {
+                $q->whereHas('kegiatan', function (Builder $kq) use ($month, $year) {
+                    $kq->whereMonth('start_datetime', $month)
+                        ->whereYear('start_datetime', $year)
+                        ->where('status', '!=', 'cancelled')
+                        ->whereHas('jenisKegiatan', function (Builder $jq) {
+                            $jq->where('payment_type', 'paid');
+                        });
+                });
+            },
             // Conditional payment tasks
             'penugasan as tugas_conditional' => function (Builder $q) use ($month, $year) {
                 $q->whereHas('kegiatan', function (Builder $kq) use ($month, $year) {

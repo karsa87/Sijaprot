@@ -155,16 +155,17 @@
     <table>
         <thead>
             <tr>
-                <th style="width: 22px;">No</th>
-                <th style="width: 115px; text-align: left; padding-left: 5px;">Nama Protokol</th>
-                <th style="width: 44px;">Tidak Dibayar</th>
-                <th style="width: 44px;">Dibayar</th>
+                <th style="width: 20px;">No</th>
+                <th style="width: 105px; text-align: left; padding-left: 5px;">Nama Protokol</th>
+                <th style="width: 38px;">Tidak Dibayar</th>
+                <th style="width: 38px;">Dibayar</th>
+                <th style="width: 48px;">Kemungkinan Dibayar</th>
                 <th>Kunker (Total & Rincian Agenda)</th>
-                <th style="width: 38px;">WFA (Jum)</th>
-                <th style="width: 44px;">Hari Weekend</th>
-                <th style="width: 44px;">Hari Weekday</th>
-                <th style="width: 38px;">Total Tugas</th>
-                <th style="width: 82px;">Status Keseimbangan</th>
+                <th style="width: 34px;">WFA (Jum)</th>
+                <th style="width: 38px;">Hari Weekend</th>
+                <th style="width: 38px;">Hari Weekday</th>
+                <th style="width: 34px;">Total Tugas</th>
+                <th style="width: 75px;">Status Keseimbangan</th>
             </tr>
         </thead>
         <tbody>
@@ -176,7 +177,8 @@
                         <div style="font-size: 6.5pt; color: #64748b;">{{ $p->phone_wa }}</div>
                     </td>
                     <td class="text-center">{{ $p->tugas_unpaid ?? 0 }}x</td>
-                    <td class="text-center font-bold" style="color: #047857;">{{ $p->tugas_dibayar_total ?? 0 }}x</td>
+                    <td class="text-center font-bold" style="color: #047857;">{{ $p->tugas_paid ?? (($p->tugas_dibayar_workday ?? 0) + ($p->tugas_dibayar_offday ?? 0)) }}x</td>
+                    <td class="text-center font-bold" style="color: #0284c7;">{{ $p->tugas_conditional ?? 0 }}x</td>
                     <td>
                         <div class="font-bold">{{ $p->tugas_kunker ?? 0 }}x</div>
                         @if ($p->kegiatan && $p->kegiatan->isNotEmpty())

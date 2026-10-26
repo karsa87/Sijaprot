@@ -58,6 +58,7 @@ class RekapDistribusiExport implements FromCollection, ShouldAutoSize, WithHeadi
                 'Nomor WhatsApp',
                 'Tidak Dibayar',
                 'Dibayar',
+                'Kemungkinan Dibayar',
                 'Kunker (Total & Rincian Agenda)',
                 'WFA (Jum\'at)',
                 'Hari Weekend',
@@ -85,12 +86,15 @@ class RekapDistribusiExport implements FromCollection, ShouldAutoSize, WithHeadi
             $kunkerText .= "\n".implode("\n", $kunkerDetails);
         }
 
+        $paidTasks = $protokol->tugas_paid ?? (($protokol->tugas_dibayar_workday ?? 0) + ($protokol->tugas_dibayar_offday ?? 0));
+
         return [
             $this->rowNumber,
             $protokol->name,
             $protokol->phone_wa,
             ($protokol->tugas_unpaid ?? 0).'x',
-            ($protokol->tugas_dibayar_total ?? 0).'x',
+            ($paidTasks ?? 0).'x',
+            ($protokol->tugas_conditional ?? 0).'x',
             $kunkerText,
             ($protokol->tugas_wfa ?? 0).'x',
             ($protokol->tugas_offday ?? 0).'x',
@@ -102,9 +106,9 @@ class RekapDistribusiExport implements FromCollection, ShouldAutoSize, WithHeadi
 
     public function styles(Worksheet $sheet): void
     {
-        $sheet->getStyle('F')->getAlignment()->setWrapText(true);
-        $sheet->getStyle('A4:K4')->getFont()->setBold(true);
-        $sheet->getStyle('K')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle('G')->getAlignment()->setWrapText(true);
+        $sheet->getStyle('A4:L4')->getFont()->setBold(true);
+        $sheet->getStyle('L')->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
     }
 
     public function title(): string
