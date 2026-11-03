@@ -7,6 +7,7 @@ use App\Enums\ProtokolStatus;
 use App\Enums\UserRole;
 use App\Models\JenisKegiatan;
 use App\Models\Kegiatan;
+use App\Models\Penugasan;
 use App\Models\Protokol;
 use App\Models\User;
 use Carbon\Carbon;
@@ -228,5 +229,133 @@ class KegiatanControllerTest extends TestCase
             ->assertRedirect('/dashboard');
 
         $this->assertSoftDeleted('kegiatan', ['id' => $kegiatan->id]);
+    }
+
+    public function test_validate_overlap_accepts_request_without_full_form_data(): void
+    {
+        $startDate = Carbon::now()->addDays(7)->toDateString();
+
+        // Validating overlap only requires protocol and dates; title, jumlah_protokol, etc. are omitted
+        $response = $this->actingAs($this->admin)
+            ->postJson('/kegiatan/validate-overlap', [
+                'protokol_id' => $this->dewi->id,
+                'start_date' => $startDate,
+                'start_time' => '08:30',
+                'end_date' => $startDate,
+                'end_time' => '12:00',
+            ]);
+
+        $response->assertStatus(200)
+            ->assertJson(['valid' => true]);
+    }
+
+    public function test_validate_overlap_detects_conflict_when_protocol_already_scheduled(): void
+    {
+        $startDate = Carbon::now()->addDays(7)->toDateString();
+
+        $existing = Kegiatan::create([
+            'title' => 'Tugas Bentrok Pagi',
+            'jenis_kegiatan_id' => $this->jenisDalamKota->id,
+            'start_datetime' => "{$startDate} 08:00:00",
+            'end_datetime' => "{$startDate} 11:00:00",
+            'location_type' => 'dalam_kota',
+            'jumlah_protokol' => 1,
+            'status' => 'scheduled',
+        ]);
+        Penugasan::create([
+            'kegiatan_id' => $existing->id,
+            'protokol_id' => $this->dewi->id,
+            'assigned_at' => now(),
+        ]);
+
+        // Dewi tries to be assigned at 09:00 - 12:00 (overlaps with 08:00 - 11:00)
+        $response = $this->actingAs($this->admin)
+            ->postJson('/kegiatan/validate-overlap', [
+                'protokol_id' => $this->dewi->id,
+                'start_date' => $startDate,
+                'start_time' => '09:00',
+                'end_date' => $startDate,
+                'end_time' => '12:00',
+            ]);
+
+        $response->assertStatus(422)
+            ->assertJson([
+                'valid' => false,
+            ]);
+    }
+
+    public function test_validate_overlap_works_with_kegiatan_id_only(): void
+    {
+        $startDate = Carbon::now()->addDays(8)->toDateString();
+
+        $kegiatan = Kegiatan::create([
+            'title' => 'Kegiatan Target Swap',
+            'jenis_kegiatan_id' => $this->jenisDalamKota->id,
+            'start_datetime' => "{$startDate} 13:00:00",
+            'end_datetime' => "{$startDate} 16:00:00",
+            'location_type' => 'dalam_kota',
+            'jumlah_protokol' => 1,
+            'status' => 'scheduled',
+        ]);
+
+        // Dewi has overlapping task at 14:00 - 17:00
+        $tugasLain = Kegiatan::create([
+            'title' => 'Tugas Dewi Siang',
+            'jenis_kegiatan_id' => $this->jenisDalamKota->id,
+            'start_datetime' => "{$startDate} 14:00:00",
+            'end_datetime' => "{$startDate} 17:00:00",
+            'location_type' => 'dalam_kota',
+            'jumlah_protokol' => 1,
+            'status' => 'scheduled',
+        ]);
+        Penugasan::create([
+            'kegiatan_id' => $tugasLain->id,
+            'protokol_id' => $this->dewi->id,
+            'assigned_at' => now(),
+        ]);
+
+        // Dewi validated for swap into $kegiatan (only passing kegiatan_id and protokol_id)
+        $response = $this->actingAs($this->admin)
+            ->postJson('/kegiatan/validate-overlap', [
+                'protokol_id' => $this->dewi->id,
+                'kegiatan_id' => $kegiatan->id,
+            ]);
+
+        $response->assertStatus(422)
+            ->assertJson([
+                'valid' => false,
+            ]);
+    }
+
+    public function test_validate_overlap_ignores_self_when_kegiatan_id_is_provided(): void
+    {
+        $startDate = Carbon::now()->addDays(9)->toDateString();
+
+        $kegiatan = Kegiatan::create([
+            'title' => 'Kegiatan Andi Sendiri',
+            'jenis_kegiatan_id' => $this->jenisDalamKota->id,
+            'start_datetime' => "{$startDate} 10:00:00",
+            'end_datetime' => "{$startDate} 12:00:00",
+            'location_type' => 'dalam_kota',
+            'jumlah_protokol' => 1,
+            'status' => 'scheduled',
+        ]);
+        Penugasan::create([
+            'kegiatan_id' => $kegiatan->id,
+            'protokol_id' => $this->andi->id,
+            'assigned_at' => now(),
+        ]);
+
+        // Andi validated on the same kegiatan should not trigger self-overlap
+        $response = $this->actingAs($this->admin)
+            ->postJson('/kegiatan/validate-overlap', [
+                'protokol_id' => $this->andi->id,
+                'kegiatan_id' => $kegiatan->id,
+            ]);
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'valid' => true,
+            ]);
     }
 }

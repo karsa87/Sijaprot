@@ -126,15 +126,16 @@ class KegiatanController extends Controller
     {
         $request->validate([
             'protokol_id' => ['required', 'exists:protokols,id'],
-            'start_date' => ['required', 'date'],
-            'start_time' => ['required', 'date_format:H:i'],
-            'end_date' => ['required', 'date'],
-            'end_time' => ['required', 'date_format:H:i'],
-            'jenis_kegiatan_id' => ['required', 'exists:jenis_kegiatan,id'],
+            'kegiatan_id' => ['nullable', 'exists:kegiatan,id'],
+            'start_date' => ['required_without:kegiatan_id', 'nullable', 'date'],
+            'start_time' => ['required_without:kegiatan_id', 'nullable', 'date_format:H:i'],
+            'end_date' => ['required_without:kegiatan_id', 'nullable', 'date'],
+            'end_time' => ['required_without:kegiatan_id', 'nullable', 'date_format:H:i'],
+            'jenis_kegiatan_id' => ['nullable', 'exists:jenis_kegiatan,id'],
         ]);
 
         $proto = Protokol::findOrFail($request->input('protokol_id'));
-        $tempKegiatan = $this->buildTemporaryKegiatan($request->all(), $request->input('kegiatan_id'));
+        $tempKegiatan = $this->buildKegiatanForOverlap($request);
 
         $hasOverlap = $gapChecker->hasDirectOverlap($proto, $tempKegiatan);
 
@@ -312,5 +313,42 @@ class KegiatanController extends Controller
             'location_type' => $jenis?->location_type->value ?? LocationType::DALAM_KOTA->value,
             'status' => KegiatanStatus::DRAFT->value,
         ]);
+    }
+
+    /**
+     * Build minimal Kegiatan instance specifically for protocol overlap checking.
+     */
+    protected function buildKegiatanForOverlap(Request $request): Kegiatan
+    {
+        $kegiatanId = $request->filled('kegiatan_id') ? (int) $request->input('kegiatan_id') : null;
+        $existing = $kegiatanId ? Kegiatan::find($kegiatanId) : null;
+
+        if ($request->filled('start_date') && $request->filled('start_time')) {
+            $startDateTime = "{$request->input('start_date')} {$request->input('start_time')}:00";
+        } elseif ($request->filled('start_datetime')) {
+            $startDateTime = Carbon::parse($request->input('start_datetime'))->toDateTimeString();
+        } else {
+            $startDateTime = $existing?->start_datetime ? Carbon::parse($existing->start_datetime)->toDateTimeString() : Carbon::now()->toDateTimeString();
+        }
+
+        if ($request->filled('end_date') && $request->filled('end_time')) {
+            $endDateTime = "{$request->input('end_date')} {$request->input('end_time')}:00";
+        } elseif ($request->filled('end_datetime')) {
+            $endDateTime = Carbon::parse($request->input('end_datetime'))->toDateTimeString();
+        } else {
+            $endDateTime = $existing?->end_datetime ? Carbon::parse($existing->end_datetime)->toDateTimeString() : Carbon::now()->addHours(2)->toDateTimeString();
+        }
+
+        $kegiatan = new Kegiatan([
+            'start_datetime' => $startDateTime,
+            'end_datetime' => $endDateTime,
+            'status' => KegiatanStatus::DRAFT->value,
+        ]);
+
+        if ($kegiatanId) {
+            $kegiatan->id = $kegiatanId;
+        }
+
+        return $kegiatan;
     }
 }
